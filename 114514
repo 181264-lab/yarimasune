@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ワンナイト人狼オンラインマルチプレイヤー (P2P通信版)</title>
+    <!-- Tailwind CSS for elegant styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS for Firebase-free Peer-to-Peer communication -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Yusei+Magic&family=Zen+Maru+Gothic:wght@400;700&display=swap');
+        body {
+            font-family: 'Zen Maru Gothic', sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+        .wolf-title {
+            font-family: 'Yusei Magic', sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-red-900/40 p-4 sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-wolf-pack-battalion text-red-600 text-2xl animate-pulse"></i>
+                <h1 class="text-xl md:text-2xl font-bold tracking-wider text-red-500 wolf-title">ワンナイト人狼 Online</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span id="display-room-id" class="hidden bg-slate-800 text-amber-400 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 font-bold">
+                    部屋: <span id="current-room-code" class="text-white tracking-widest ml-1">-----</span>
+                </span>
+                <span id="display-offline-badge" class="hidden bg-amber-950 text-amber-400 text-xs px-2.5 py-1.5 rounded-lg border border-amber-800 font-bold">
+                    <i class="fa-solid fa-mobile-screen mr-1"></i>対面プレイ
+                </span>
+                <button id="btn-reset" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition">
+                    <i class="fa-solid fa-house mr-1"></i>ロビーへ
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow max-w-2xl w-full mx-auto p-4 flex flex-col justify-center">
+
+        <!-- Connection Status Banner -->
+        <div id="connection-status-banner" class="mb-4 text-center text-xs py-1.5 px-3 rounded-lg hidden">
+            <span>ステータス: 接続中...</span>
+        </div>
+
+        <!-- 0. LOBBY SCREEN (ロビー画面) -->
+        <section id="screen-lobby" class="bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-3 py-4">
+                <i class="fa-solid fa-cloud-bolt text-6xl text-indigo-400 animate-bounce" id="lobby-icon"></i>
+                <h2 class="text-3xl font-bold text-red-400 wolf-title tracking-wider" id="lobby-title">オンラインP2Pマルチプレイ</h2>
+                <p class="text-sm text-slate-400" id="lobby-desc">サーバーレス接続！それぞれの端末を直接繋いで、リアルタイムにゲームを遊ぶことができます。</p>
+            </div>
+
+            <!-- Set Nickname / Player Setup -->
+            <div class="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-850">
+                <!-- Offline Player list input (Hidden by default, shown in offline mode) -->
+                <div id="offline-setup-area" class="hidden space-y-3">
+                    <label class="block text-xs font-bold text-slate-400 tracking-wider">プレイヤー登録 (3〜6人)</label>
+                    <div id="offline-players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <!-- Dynamic offline players inputs -->
+                    </div>
+                    <button id="btn-add-offline-player" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center space-x-1">
+                        <i class="fa-solid fa-circle-plus"></i> <span>プレイヤーを追加</span>
+                    </button>
+                </div>
+
+                <!-- Online Single Nickname input -->
+                <div id="online-nickname-area" class="space-y-2">
+                    <label class="block text-xs font-bold text-slate-400 tracking-wider">あなたのニックネーム</label>
+                    <input type="text" id="input-nickname" class="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 px-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-bold" placeholder="名前を入力してください">
+                </div>
+            </div>
+
+            <!-- Online Mode Controls -->
+            <div id="online-mode-controls" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <!-- Create Room -->
+                <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <h3 class="font-bold text-white text-sm">新しく部屋を作る</h3>
+                        <p class="text-xs text-slate-500 mt-1">あなたがホスト（部屋の親）になり、お友達を5桁の部屋コードで招待します。</p>
+                    </div>
+                    <button id="btn-create-room" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition text-sm">
+                        部屋を作成する
+                    </button>
+                </div>
+
+                <!-- Join Room -->
+                <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <h3 class="font-bold text-white text-sm">すでにある部屋に入る</h3>
+                        <p class="text-xs text-slate-500 mt-1">友達が作った部屋の「5桁の部屋コード」を入力してください。</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <input type="text" id="input-room-code" maxlength="5" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg text-center font-mono text-lg font-bold tracking-widest text-amber-400 uppercase" placeholder="ABC12">
+                        <button id="btn-join-room" class="w-1/2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition text-sm">
+                            部屋に入る
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Offline Mode Controls -->
+            <div id="offline-mode-controls" class="hidden pt-2">
+                <button id="btn-start-offline-setup" class="w-full py-4 bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-lg flex justify-center items-center space-x-2">
+                    <i class="fa-solid fa-gamepad"></i> <span>ゲーム設定に進む (対面プレイ)</span>
+                </button>
+            </div>
+
+            <!-- Toggle Mode Manual Button -->
+            <div class="text-center pt-2">
+                <button id="btn-toggle-manual-mode" class="text-xs text-slate-500 hover:text-slate-300 underline transition">
+                    対面プレイ（1台のスマホを回して遊ぶ）に変更する
+                </button>
+            </div>
+
+            <!-- Connection Guide Banner -->
+            <div id="connection-guide-banner" class="p-3 bg-slate-950/60 rounded-xl border border-slate-850 text-[11px] text-slate-400 space-y-1">
+                <p class="font-bold text-amber-500 flex items-center">
+                    <i class="fa-solid fa-wifi mr-1"></i> Canvas プレビュー環境での制限について
+                </p>
+                <p>
+                    このCanvas（開発プレビュー）環境はセキュリティポリシー上、外部とのWebSocket（P2Pマルチプレイ）が制限されています。
+                    <b>自動的にローカル対面モードが適用されます。</b>
+                    このファイルを「ローカルPCでダブルクリックして開く」か、「GitHub Pagesに公開」すると、本来のP2Pマルチプレイが自動的に機能します！
+                </p>
+            </div>
+        </section>
+
+        <!-- 1. WAITING ROOM / SETUP SCREEN (待機室・設定画面) -->
+        <section id="screen-setup" class="hidden bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-1">
+                <span id="setup-room-code-badge" class="text-xs bg-slate-800 text-slate-400 px-3 py-1 rounded-full border border-slate-750 font-mono tracking-widest">
+                    ROOM CODE: <b id="setup-room-code" class="text-amber-400">-----</b>
+                </span>
+                <h2 class="text-2xl font-bold text-red-400 wolf-title pt-3" id="setup-screen-title">ゲーム待機室</h2>
+                <p class="text-xs text-slate-400" id="setup-screen-desc">友達が参加するのを待ちましょう。ホストが役職を設定してゲームを開始します。</p>
+            </div>
+
+            <!-- Players List in Room -->
+            <div class="space-y-3">
+                <label class="block text-sm font-bold text-slate-300">
+                    <i class="fa-solid fa-users text-indigo-400 mr-1"></i>参加プレイヤー (<span id="waiting-players-count">0</span>名)
+                </label>
+                <div id="players-waiting-list" class="grid grid-cols-2 gap-2">
+                    <!-- Dynamic player labels -->
+                </div>
+            </div>
+
+            <!-- Roles Selection (Only visible/editable by Host / Always visible in Offline) -->
+            <div id="host-controls-area" class="space-y-4 pt-2 border-t border-slate-800 hidden">
+                <div class="flex justify-between items-center">
+                    <label class="block text-sm font-bold text-slate-300">
+                        <i class="fa-solid fa-id-card text-yellow-500 mr-1"></i>役職の設定
+                    </label>
+                    <span id="role-counter" class="text-xs bg-slate-800 px-2.5 py-1 rounded-full border border-slate-700">
+                        選択中: <span id="selected-role-count" class="font-bold text-yellow-400">0</span> / 必要数: <span id="required-role-count" class="font-bold text-slate-300">0</span>
+                    </span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3" id="roles-grid">
+                    <!-- Roles will be inserted dynamically -->
+                </div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    <i class="fa-solid fa-circle-info mr-1"></i>役職の合計枚数は <b>プレイヤー人数 ＋ 2枚</b>（場に残るカード）にする必要があります。
+                </p>
+
+                <!-- Start Button (Host/Offline) -->
+                <div class="pt-2">
+                    <button id="btn-start-game" class="w-full py-4 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold rounded-xl shadow-lg transition duration-200 transform active:scale-95 text-lg flex justify-center items-center space-x-2 disabled:opacity-50 disabled:pointer-events-none">
+                        <i class="fa-solid fa-moon"></i> <span id="btn-start-game-text">全員で夜のターンを始める</span>
+                    </button>
+                    <p id="setup-error" class="text-red-400 text-xs text-center mt-2 hidden"></p>
+                </div>
+            </div>
+
+            <!-- Guest Waiting Message -->
+            <div id="guest-waiting-area" class="p-4 bg-slate-950/60 rounded-xl text-center border border-slate-850 text-sm text-slate-400 space-y-2">
+                <div class="flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-spinner animate-spin text-indigo-400"></i>
+                    <span>ホストがゲームを開始するのを待っています...</span>
+                </div>
+                <p class="text-xs text-slate-500">※開始前にホストが現在の参加人数に合わせた役職の調整を行います。</p>
+            </div>
+        </section>
+
+        <!-- 2. NIGHT TURN OVERVIEW (夜のターン・待機状態または行動ターン / 対面の場合は確認画面) -->
+        <section id="screen-night-transition" class="hidden bg-slate-900/90 p-8 rounded-2xl border border-slate-800 shadow-2xl text-center space-y-6">
+            <div id="night-waiting-others" class="space-y-4 py-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-slate-800/80 rounded-full border border-indigo-500/30 mb-2 relative" id="night-icon-wrapper">
+                    <i class="fa-solid fa-moon text-indigo-400 text-4xl animate-pulse"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-200 wolf-title" id="night-title-main">真夜中の時間...</h2>
+                <p class="text-sm text-slate-400" id="night-status-text">他のプレイヤーが行動を選択しています。<br>画面を隠して静かにお待ちください。</p>
+                <div class="p-3 bg-slate-950/40 rounded-lg text-xs text-slate-500 max-w-xs mx-auto" id="night-sub-order">
+                    現在の行動順： 人狼 ➔ 占い師 ➔ 怪盗 ➔ トラブルメーカー ➔ 不眠症
+                </div>
+                
+                <!-- Step button for offline/pass-around playing -->
+                <div id="offline-transition-button-area" class="hidden pt-4">
+                    <button id="btn-start-offline-turn" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-lg">
+                        準備完了（自分の役職を確認する）
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. ACTION SCREEN (各個人の夜の行動・カード確認) -->
+        <section id="screen-night-action" class="hidden bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <span class="text-slate-400 text-xs">あなたの番です: <b class="text-white" id="action-player-title">---</b></span>
+                <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-indigo-900/50 text-indigo-300 border border-indigo-700/50">あなたの夜の行動</span>
+            </div>
+
+            <!-- Card Flip Area -->
+            <div class="flex flex-col items-center justify-center py-2">
+                <div id="card-display" class="w-44 h-60 bg-slate-950 rounded-2xl border-2 flex flex-col items-center justify-center p-4 text-center shadow-xl relative overflow-hidden">
+                    <div class="absolute inset-0 bg-radial-gradient from-transparent to-slate-950 opacity-50"></div>
+                    <div id="card-icon" class="text-4xl text-amber-500 mb-3 z-10">
+                        <i class="fa-solid fa-wolf-pack-battalion"></i>
+                    </div>
+                    <div id="card-role-name" class="text-xl font-bold text-white wolf-title tracking-wider z-10">役職名</div>
+                    <div id="card-role-team" class="text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-full z-10">陣営</div>
+                    <p id="card-role-desc" class="text-[11px] text-slate-400 mt-3 leading-relaxed z-10">役職の説明文がここに入ります。</p>
+                </div>
+            </div>
+
+            <!-- Action Prompt & Form (Dynamic per role) -->
+            <div id="action-interactive-area" class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                <h4 class="font-bold text-xs text-slate-300" id="action-prompt-title">夜の能力を実行してください</h4>
+                <div id="action-controls" class="space-y-2">
+                    <!-- Target selectors will appear here -->
+                </div>
+                <div id="action-result-text" class="text-xs text-amber-400 font-bold hidden bg-amber-950/20 p-3 rounded-lg border border-amber-900/30">
+                    <!-- Action results shown here immediately if applicable -->
+                </div>
+            </div>
+
+            <!-- Next Confirm Button -->
+            <button id="btn-complete-action" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-md">
+                行動を完了して他の人を待つ
+            </button>
+        </section>
+
+        <!-- 4. TALK TIME & VOTING (議論と投票) -->
+        <section id="screen-discussion" class="hidden bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <h2 class="text-2xl font-bold text-amber-500 wolf-title flex justify-center items-center">
+                    <i class="fa-solid fa-sun mr-2 animate-spin text-amber-400" style="animation-duration: 15s;"></i> 朝が来ました！
+                </h2>
+                <p class="text-xs text-slate-400">話し合いを行い、誰が人狼なのかを推理しましょう。</p>
+            </div>
+
+            <!-- Timer Area -->
+            <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 text-center space-y-2">
+                <div class="text-3xl font-mono font-bold text-white tracking-widest" id="discussion-timer">05:00</div>
+                <div id="timer-host-controls" class="flex justify-center space-x-2 hidden">
+                    <button id="btn-timer-toggle" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-3 py-1.5 rounded-lg font-bold transition">
+                        <i class="fa-solid fa-play mr-1"></i>スタート / 一時停止
+                    </button>
+                </div>
+                <div id="timer-guest-status" class="text-[10px] text-slate-500">
+                    （議論時間はホストが管理・同期します）
+                </div>
+            </div>
+
+            <!-- Voting Section -->
+            <div class="space-y-4 pt-2">
+                <h3 class="font-bold text-sm text-slate-300 border-b border-slate-800 pb-2 flex items-center justify-between">
+                    <span><i class="fa-solid fa-check-to-slot text-red-500 mr-1"></i>投票をおこなう</span>
+                    <span class="text-xs text-slate-400" id="vote-count-status">未投票: 0人</span>
+                </h3>
+                
+                <!-- Online voting block -->
+                <div id="online-voting-input-area" class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                    <label class="block text-xs font-bold text-slate-400">あなたの投票先：</label>
+                    <select id="my-vote-selector" class="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm py-2 px-3 text-white focus:ring-2 focus:ring-red-500 focus:border-red-500">
+                        <!-- Target options dynamically filled -->
+                    </select>
+                    <button id="btn-cast-vote" class="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition">
+                        投票を送信する
+                    </button>
+                </div>
+
+                <!-- Offline voting block (List of select boxes for pass-around play) -->
+                <div id="offline-voting-inputs-area" class="space-y-3 hidden">
+                    <!-- Dynamic select lists for all offline players -->
+                </div>
+
+                <div class="p-3 bg-slate-950/40 rounded-lg border border-slate-850" id="vote-badges-outer">
+                    <h4 class="text-[10px] font-bold text-slate-500 mb-1.5">投票状況</h4>
+                    <div id="vote-status-badges" class="flex flex-wrap gap-1.5">
+                        <!-- Badges showing who voted -->
+                    </div>
+                </div>
+
+                <button id="btn-reveal-results-manual" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-md hidden">
+                    集計して結果を発表する
+                </button>
+            </div>
+        </section>
+
+        <!-- 5. RESULT SCREEN (結果発表) -->
+        <section id="screen-result" class="hidden bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center justify-center w-14 h-14 bg-red-950/50 rounded-full border border-red-500 mb-2">
+                    <i class="fa-solid fa-door-open text-amber-500 text-2xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold wolf-title tracking-wider" id="result-winner-team">---</h2>
+                <p class="text-xs text-slate-400">今回のゲーム結果と、それぞれが迎えた最終的な正体です。</p>
+            </div>
+
+            <!-- Execution Result -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-1">
+                <h3 class="text-xs font-bold text-slate-400">追放された（村から送り出された）プレイヤー</h3>
+                <div class="text-lg font-bold text-red-400" id="result-executed-players">---</div>
+            </div>
+
+            <!-- Roles Reveal List -->
+            <div class="space-y-3">
+                <h3 class="font-bold text-sm text-slate-300 border-b border-slate-800 pb-2"><i class="fa-solid fa-eye text-indigo-400 mr-1"></i>最終的な役職の内訳</h3>
+                <div class="grid grid-cols-1 gap-2" id="result-roles-reveal">
+                    <!-- Players real roles and original roles -->
+                </div>
+                
+                <div class="mt-4 p-4 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
+                    <h4 class="text-xs font-bold text-slate-400">お墓・場に残ったカード</h4>
+                    <div id="result-talon-cards" class="grid grid-cols-2 gap-2">
+                        <!-- Leftover card info -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Log -->
+            <div class="space-y-2">
+                <h3 class="font-bold text-sm text-slate-300 border-b border-slate-800 pb-2"><i class="fa-solid fa-receipt text-amber-500 mr-1"></i>夜の行動ログ</h3>
+                <div id="result-action-log" class="text-[11px] text-slate-400 space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-800 max-h-32 overflow-y-auto">
+                    <!-- Actions printed here -->
+                </div>
+            </div>
+
+            <!-- Reset Button (Only Host/Local can trigger next round) -->
+            <div id="host-restart-area" class="hidden">
+                <button id="btn-restart-game" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-md">
+                    同じメンバーで新しく始める
+                </button>
+            </div>
+            <div id="guest-restart-area" class="text-xs text-center text-slate-500 p-3 bg-slate-950/30 rounded-lg">
+                ホストが次のゲームを新しく開始するのをお待ちください...
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-950 p-4 text-center text-xs text-slate-500 border-t border-slate-900">
+        <p>© 2026 ワンナイト人狼オンラインマルチプレイヤー (P2P通信版). All Rights Reserved.</p>
+    </footer>
+
+    <!-- Description Dialog Custom (No browser alerts allowed) -->
+    <div id="custom-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <h3 class="text-lg font-bold text-white flex items-center space-x-2" id="modal-title">
+                <i class="fa-solid fa-circle-exclamation text-amber-500"></i> <span>確認</span>
+            </h3>
+            <p class="text-sm text-slate-300 leading-relaxed whitespace-pre-line text-left" id="modal-body">メッセージがここに入ります。</p>
+            <div class="flex justify-end pt-2">
+                <button id="btn-modal-close" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition">
+                    了解
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Javascript Logical Core (PeerJS P2P engine with local fallbacks) -->
+    <script>
+        // --- GAME STORES & SETTINGS ---
+        const ALL_ROLES = {
+            wolf: {
+                id: 'wolf',
+                name: '人狼',
+                team: 'werewolf',
+                teamName: '人狼陣営',
+                colorClass: 'bg-red-900/50 text-red-300 border-red-700',
+                icon: 'fa-wolf-pack-battalion text-red-500',
+                desc: '仲間の人狼が誰なのかを確認できます。人狼が一人の場合は、場に残されたカード（墓）の1枚を見るチャンスがあります。',
+                order: 1
+            },
+            seer: {
+                id: 'seer',
+                name: '占い師',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-indigo-900/50 text-indigo-300 border-indigo-700',
+                icon: 'fa-wand-magic-sparkles text-indigo-400',
+                desc: '夜の間に誰か1人のカード、または場に残されたカード（墓）を2枚確認することができます。',
+                order: 2
+            },
+            robber: {
+                id: 'robber',
+                name: '怪盗',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-amber-900/50 text-amber-300 border-amber-700',
+                icon: 'fa-mask text-amber-400',
+                desc: '夜の間に自分と他の誰かのカードをすり替えることができます。すり替えた後のカードをこっそり確認します。',
+                order: 3
+            },
+            villager: {
+                id: 'villager',
+                name: '市民',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
+                icon: 'fa-user text-emerald-400',
+                desc: '夜の行動はありません。昼の議論において、言葉巧みな人狼をあぶり出すように推理しましょう。',
+                order: 0
+            },
+            troublemaker: {
+                id: 'troublemaker',
+                name: 'トラブルメーカー',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-purple-900/50 text-purple-300 border-purple-700',
+                icon: 'fa-shuffle text-purple-400',
+                desc: '他のプレイヤー２人のカードをこっそり入れ替えます。ただし自分はその内容を知ることはできません。',
+                order: 4
+            },
+            mason: {
+                id: 'mason',
+                name: '共同墓地（石工）',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-slate-700/50 text-slate-300 border-slate-600',
+                icon: 'fa-hammer text-slate-400',
+                desc: '他の「石工」が誰であるかを確認できます。（2枚セットで遊ぶことをおすすめします）',
+                order: 1.5
+            },
+            insomniac: {
+                id: 'insomniac',
+                name: '不眠症',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-pink-900/50 text-pink-300 border-pink-700',
+                icon: 'fa-eye text-pink-400',
+                desc: '夜の最後に、自分のカードが誰かにすり替えられていないか最終確認をすることができます。',
+                order: 5
+            }
+        };
+
+        // 状態定義
+        let myNickname = localStorage.getItem('werewolf_nickname') || '';
+        let myRoomId = '';
+        let isHost = false;
+        let isOfflineMode = false; // オフライン（対面プレイモード）フラグ
+        
+        // P2P通信用の変数
+        let myPeer = null;
+        let hostConnection = null;       
+        let guestConnections = {};       
+        let roomData = null;             
+        let localTimerInterval = null;
+
+        const PEER_PREFIX = "wnwolf-p2p-v2-"; 
+
+        // 対面プレイ(Offline)時のローカルプレイヤー初期設定
+        let offlinePlayers = [
+            { id: 1, name: 'プレイヤー1' },
+            { id: 2, name: 'プレイヤー2' },
+            { id: 3, name: 'プレイヤー3' },
+            { id: 4, name: 'プレイヤー4' }
+        ];
+
+        // Canvas内WebSocketブロックエラーに対応するPeerJS公式接続設定
+        const peerJsConfig = {
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            secure: true,
+            pingInterval: 5000,
+            debug: 1,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
+
+        // お知らせ表示用モーダル
+        function showModal(title, text) {
+            document.getElementById('modal-title').querySelector('span').innerText = title;
+            document.getElementById('modal-body').innerText = text;
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+        document.getElementById('btn-modal-close').addEventListener('click', () => {
+            document.getElementById('custom-modal').classList.add('hidden');
+        });
+
+        // 画面切り替えの定義
+        const screens = {
+            lobby: document.getElementById('screen-lobby'),
+            setup: document.getElementById('screen-setup'),
+            nightTransition: document.getElementById('screen-night-transition'),
+            nightAction: document.getElementById('screen-night-action'),
+            discussion: document.getElementById('screen-discussion'),
+            result: document.getElementById('screen-result')
+        };
+
+        function transitionToScreen(screenKey) {
+            Object.keys(screens).forEach(key => {
+                if (key === screenKey) {
+                    screens[key].classList.remove('hidden');
+                } else {
+                    screens[key].classList.add('hidden');
+                }
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // コネクションステータス表示の変更
+        function setBannerStatus(text, colorClass) {
+            const banner = document.getElementById('connection-status-banner');
+            banner.className = `mb-4 text-center text-xs py-1.5 px-3 rounded-lg font-bold text-white ${colorClass}`;
+            banner.querySelector('span').innerText = text;
+            banner.classList.remove('hidden');
+        }
+
+        function hideBanner() {
+            document.getElementById('connection-status-banner').classList.add('hidden');
+        }
+
+        // 5桁の打ち込みやすい英数字コードをランダム生成
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let result = '';
+            for (let i = 0; i < 5; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        // --- AUTOMATIC OFFLINE DETECTION & SWITCHING ---
+        // 開発プレビュー(Canvas内など)でWebSocket接続が規制されている場合、自動的にオフラインモードへ移行する仕組み
+        function activateOfflineMode() {
+            isOfflineMode = true;
+            isHost = true; // オフライン時は自分がホストを兼ねる
+            
+            // UIを対面プレイ用にアップデート
+            document.getElementById('lobby-title').innerText = "対面マルチプレイ";
+            document.getElementById('lobby-desc').innerText = "1台のスマートフォン・PCをみんなで順番に回しながら「ワンナイト人狼」を遊ぶことができます。";
+            document.getElementById('lobby-icon').className = "fa-solid fa-mobile-screen text-6xl text-amber-500 animate-pulse";
+            
+            // オンライン入力を非表示、オフライン入力を表示
+            document.getElementById('online-nickname-area').classList.add('hidden');
+            document.getElementById('online-mode-controls').classList.add('hidden');
+            
+            document.getElementById('offline-setup-area').classList.remove('hidden');
+            document.getElementById('offline-mode-controls').classList.remove('hidden');
+            
+            document.getElementById('display-offline-badge').classList.remove('hidden');
+            document.getElementById('display-room-id').classList.add('hidden');
+            
+            renderOfflinePlayersInputs();
+        }
+
+        // 手動切り替えボタン
+        document.getElementById('btn-toggle-manual-mode').addEventListener('click', () => {
+            if (isOfflineMode) {
+                // オンライン復帰
+                isOfflineMode = false;
+                document.getElementById('lobby-title').innerText = "オンラインP2Pマルチプレイ";
+                document.getElementById('lobby-desc').innerText = "サーバー・データベース不要！それぞれの端末を直接繋いで、リアルタイムにゲームを遊ぶことができます。";
+                document.getElementById('lobby-icon').className = "fa-solid fa-cloud-bolt text-6xl text-indigo-400 animate-bounce";
+                
+                document.getElementById('online-nickname-area').classList.remove('hidden');
+                document.getElementById('online-mode-controls').classList.remove('hidden');
+                
+                document.getElementById('offline-setup-area').classList.add('hidden');
+                document.getElementById('offline-mode-controls').classList.add('hidden');
+                document.getElementById('display-offline-badge').classList.add('hidden');
+            } else {
+                activateOfflineMode();
+            }
+        });
+
+        // プレビュー内（iframe内）でWebSocket制限を検知して事前対策
+        window.addEventListener('load', () => {
+            // iframeのセキュア制限環境下（Canvasなど）にあるかを検知する
+            const inIframe = window.self !== window.top;
+            if (inIframe) {
+                console.warn("Canvasプレビュー環境を検出しました。対面プレイモードに初期化します。");
+                activateOfflineMode();
+            }
+        });
+
+        // --- オフラインモード用のプレイヤー設定 ---
+        function renderOfflinePlayersInputs() {
+            const container = document.getElementById('offline-players-list');
+            container.innerHTML = '';
+            
+            offlinePlayers.forEach((p, idx) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center space-x-2 bg-slate-900 p-2 rounded-lg border border-slate-800';
+                div.innerHTML = `
+                    <span class="text-xs text-slate-500 font-bold w-5 text-center">${idx + 1}</span>
+                    <input type="text" value="${p.name}" data-idx="${idx}" class="offline-name-input bg-transparent border-0 border-b border-transparent focus:border-indigo-500 focus:ring-0 text-white text-sm w-full py-0.5" placeholder="名前">
+                    ${offlinePlayers.length > 3 ? `
+                    <button class="btn-remove-offline text-red-500 hover:text-red-400 p-1" data-idx="${idx}">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                    ` : ''}
+                `;
+                container.appendChild(div);
+            });
+
+            // バインド
+            document.querySelectorAll('.offline-name-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    offlinePlayers[idx].name = e.target.value.trim() || `プレイヤー${idx + 1}`;
+                });
+            });
+
+            document.querySelectorAll('.btn-remove-offline').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.dataset.idx);
+                    offlinePlayers.splice(idx, 1);
+                    renderOfflinePlayersInputs();
+                });
+            });
+        }
+
+        document.getElementById('btn-add-offline-player').addEventListener('click', () => {
+            if (offlinePlayers.length >= 6) {
+                showModal('人数制限', '対面モードは最大6名まで登録可能です。');
+                return;
+            }
+            offlinePlayers.push({ id: offlinePlayers.length + 1, name: `プレイヤー${offlinePlayers.length + 1}` });
+            renderOfflinePlayersInputs();
+        });
+
+        // オフライン設定画面に進む
+        document.getElementById('btn-start-offline-setup').addEventListener('click', () => {
+            // オフライン用ルームデータの構築
+            roomData = {
+                id: "LOCAL",
+                host: offlinePlayers[0].name,
+                hostPeerId: "LOCAL",
+                status: 'waiting',
+                players: offlinePlayers.map(p => ({ name: p.name, peerId: `local-${p.id}` })),
+                roleSelection: {
+                    wolf: 1,
+                    seer: 1,
+                    robber: 1,
+                    villager: 1,
+                    troublemaker: 1,
+                    mason: 0,
+                    insomniac: 0
+                },
+                gameState: {
+                    deck: [],
+                    activePlayers: [],
+                    talon: [],
+                    actionIndex: 0,
+                    actionLogs: [],
+                    votes: {},
+                    timerSeconds: 300,
+                    timerRunning: false
+                }
+            };
+
+            // 各ビューのバッジ、非表示、待機室メッセージを調整
+            document.getElementById('setup-room-code-badge').className = "hidden";
+            document.getElementById('setup-screen-title').innerText = "ゲーム設定";
+            document.getElementById('setup-screen-desc').innerText = "使用する役職の数をプレイヤー数に合わせて調整してください。";
+            
+            syncScreenState(roomData);
+        });
+
+
+        // --- P2P データ送信ユーティリティ ---
+        function broadcastData(data) {
+            roomData = data;
+            syncScreenState(data);
+            
+            // オフライン時は他デバイス送信をスキップ
+            if (isOfflineMode) return;
+
+            Object.values(guestConnections).forEach(conn => {
+                if (conn && conn.open) {
+                    conn.send({ type: 'SYNC_STATE', payload: data });
+                }
+            });
+        }
+
+        // --- 【部屋を作る】を押した時の処理 (P2P通信モード) ---
+        document.getElementById('btn-create-room').addEventListener('click', () => {
+            const nick = document.getElementById('input-nickname').value.trim();
+            if (!nick) {
+                showModal('名前の入力', 'ニックネームを入力してください。');
+                return;
+            }
+            myNickname = nick;
+            localStorage.setItem('werewolf_nickname', nick);
+
+            const code = generateRoomCode();
+            myRoomId = code;
+            isHost = true;
+
+            setBannerStatus("通信サーバーに接続しています...", "bg-blue-600");
+
+            // WebSocket(P2P)のSecurityError・クラッシュを未然にキャッチして安全に縮退
+            try {
+                myPeer = new Peer(`${PEER_PREFIX}${code}`, peerJsConfig);
+            } catch (initErr) {
+                console.error("PeerJSのインスタンス生成に失敗:", initErr);
+                handleConnectionCrash();
+                return;
+            }
+
+            myPeer.on('open', (id) => {
+                setBannerStatus("接続に成功しました！お友達を招待してください。", "bg-emerald-600");
+                
+                roomData = {
+                    id: code,
+                    host: myNickname,
+                    hostPeerId: id,
+                    status: 'waiting',
+                    players: [{ name: myNickname, peerId: id }],
+                    roleSelection: {
+                        wolf: 1,
+                        seer: 1,
+                        robber: 1,
+                        villager: 1,
+                        troublemaker: 1,
+                        mason: 0,
+                        insomniac: 0
+                    },
+                    gameState: {
+                        deck: [],
+                        activePlayers: [],
+                        talon: [],
+                        actionIndex: 0,
+                        actionLogs: [],
+                        votes: {},
+                        timerSeconds: 300,
+                        timerRunning: false
+                    }
+                };
+
+                guestConnections = {};
+                syncScreenState(roomData);
+            });
+
+            myPeer.on('error', (err) => {
+                console.error("PeerJSエラー:", err);
+                
+                // WebSocket例外、セキュリティ拒否、ポートブロッキングを検出
+                if (err.type === 'socket-error' || err.type === 'network' || err.type === 'peer-api') {
+                    handleConnectionCrash();
+                } else if (err.type === 'unavailable-id') {
+                    showModal('ルーム作成エラー', 'この部屋コードはインターネット上で他の方が使用中です。もう一度作成を試してください。');
+                } else {
+                    showModal('接続に失敗しました', `通信エラー: ${err.type}`);
+                }
+            });
+
+            myPeer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    guestConnections[conn.peer] = conn;
+                    conn.on('data', (data) => {
+                        handleClientMessage(conn.peer, data);
+                    });
+                });
+
+                conn.on('close', () => {
+                    delete guestConnections[conn.peer];
+                    if (roomData && roomData.status === 'waiting') {
+                        roomData.players = roomData.players.filter(p => p.peerId !== conn.peer);
+                        broadcastData(roomData);
+                    }
+                });
+            });
+        });
+
+        // 通信クラッシュ時（WebSocket禁止環境）のフォールバック
+        function handleConnectionCrash() {
+            setBannerStatus("WebSocketエラーを検出 - 対面プレイに移行しました", "bg-amber-600");
+            showModal(
+                '接続エラー(WebSocket制限)', 
+                'お使いの開発プレビュー（Canvas）またはネットワークセキュリティにより、端末同士の接続（WebSocket）が遮断されました。\n\n【自動フォールバック】\nゲームをスムーズにテスト・体験できるよう、自動的に「1台のスマホ・PCを回して遊ぶ対面プレイモード」に切り替えました！ロビーからそのままゲーム設定を始めてください。'
+            );
+            activateOfflineMode();
+        }
+
+        // --- 【部屋に入る】を押した時の処理 ---
+        document.getElementById('btn-join-room').addEventListener('click', () => {
+            const nick = document.getElementById('input-nickname').value.trim();
+            const code = document.getElementById('input-room-code').value.trim().toUpperCase();
+            
+            if (!nick) {
+                showModal('名前の入力', 'ニックネームを入力してください。');
+                return;
+            }
+            if (!code || code.length !== 5) {
+                showModal('部屋コードの入力', '5桁の部屋コードを入力してください。');
+                return;
+            }
+
+            myNickname = nick;
+            localStorage.setItem('werewolf_nickname', nick);
+            myRoomId = code;
+            isHost = false;
+
+            setBannerStatus("ホストを探しています...", "bg-blue-600");
+
+            try {
+                myPeer = new Peer(peerJsConfig);
+            } catch (initErr) {
+                console.error("PeerJSのクライアント初期化失敗:", initErr);
+                handleConnectionCrash();
+                return;
+            }
+
+            myPeer.on('open', (id) => {
+                const targetHostPeerId = `${PEER_PREFIX}${code}`;
+                hostConnection = myPeer.connect(targetHostPeerId);
+
+                hostConnection.on('open', () => {
+                    setBannerStatus("友達の部屋に接続しました！準備中...", "bg-emerald-600");
+                    
+                    hostConnection.send({
+                        type: 'JOIN_REQ',
+                        payload: { name: myNickname, peerId: id }
+                    });
+                });
+
+                hostConnection.on('data', (data) => {
+                    if (data.type === 'SYNC_STATE') {
+                        roomData = data.payload;
+                        syncScreenState(roomData);
+                    } else if (data.type === 'REJECT') {
+                        showModal('入れませんでした', data.payload || '部屋に入ることができませんでした。');
+                        disconnectPeer();
+                    }
+                });
+
+                hostConnection.on('close', () => {
+                    showModal('切断されました', 'ホストとの通信が切れました。ロビーに戻ります。');
+                    disconnectPeer();
+                });
+            });
+
+            myPeer.on('error', (err) => {
+                console.error("PeerJS接続エラー:", err);
+                if (err.type === 'socket-error' || err.type === 'network') {
+                    handleConnectionCrash();
+                } else {
+                    setBannerStatus("接続できませんでした", "bg-red-600");
+                    showModal('接続失敗', '部屋が見つかりませんでした。入力した5桁の部屋コードが正しいか確認してください。');
+                }
+            });
+        });
+
+        // 接続リセット
+        function disconnectPeer() {
+            if (hostConnection) {
+                hostConnection.close();
+                hostConnection = null;
+            }
+            Object.values(guestConnections).forEach(conn => conn.close());
+            guestConnections = {};
+
+            if (myPeer) {
+                myPeer.destroy();
+                myPeer = null;
+            }
+
+            myRoomId = '';
+            isHost = false;
+            roomData = null;
+            if (localTimerInterval) clearInterval(localTimerInterval);
+
+            document.getElementById('display-room-id').classList.add('hidden');
+            hideBanner();
+            transitionToScreen('lobby');
+        }
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            disconnectPeer();
+        });
+
+        // クライアントからのメッセージ処理
+        function handleClientMessage(senderPeerId, msg) {
+            if (!isHost || !roomData || isOfflineMode) return;
+
+            switch (msg.type) {
+                case 'JOIN_REQ':
+                    if (roomData.status !== 'waiting') {
+                        const conn = guestConnections[senderPeerId];
+                        if (conn) conn.send({ type: 'REJECT', payload: 'このゲームはすでに開始されています。' });
+                        return;
+                    }
+                    
+                    let candidateName = msg.payload.name;
+                    while (roomData.players.some(p => p.name === candidateName)) {
+                        candidateName += "#";
+                    }
+
+                    roomData.players.push({ name: candidateName, peerId: senderPeerId });
+                    broadcastData(roomData);
+                    break;
+
+                case 'UPDATE_ROLES':
+                    roomData.roleSelection = msg.payload;
+                    broadcastData(roomData);
+                    break;
+
+                case 'NIGHT_ACTION_COMMIT':
+                    const gStateCommit = roomData.gameState;
+                    const committedPlayer = gStateCommit.activePlayers.find(p => p.name === msg.payload.playerName);
+                    if (committedPlayer) {
+                        committedPlayer.actionDone = true;
+                    }
+                    if (msg.payload.log) {
+                        gStateCommit.actionLogs.push(msg.payload.log);
+                    }
+                    if (msg.payload.updatedPlayers) {
+                        gStateCommit.activePlayers = msg.payload.updatedPlayers;
+                    }
+                    broadcastData(roomData);
+                    break;
+
+                case 'CAST_VOTE':
+                    const vState = roomData.gameState;
+                    vState.votes[msg.payload.voterName] = msg.payload.targetName;
+                    broadcastData(roomData);
+                    break;
+
+                case 'TOGGLE_TIMER':
+                    roomData.gameState.timerRunning = !roomData.gameState.timerRunning;
+                    broadcastData(roomData);
+                    break;
+            }
+        }
+
+        // 状態同期
+        function syncScreenState(data) {
+            localRoleSelection = data.roleSelection || {};
+            document.getElementById('setup-room-code').innerText = data.id;
+            
+            if (!isOfflineMode) {
+                document.getElementById('current-room-code').innerText = data.id;
+                document.getElementById('display-room-id').classList.remove('hidden');
+                document.getElementById('display-offline-badge').classList.add('hidden');
+            } else {
+                document.getElementById('display-room-id').classList.add('hidden');
+                document.getElementById('display-offline-badge').classList.remove('hidden');
+            }
+
+            switch (data.status) {
+                case 'waiting':
+                    setupWaitingRoom(data);
+                    break;
+                case 'night':
+                    processNightPhase(data);
+                    break;
+                case 'discussion':
+                    processDiscussionPhase(data);
+                    break;
+                case 'result':
+                    processResultPhase(data);
+                    break;
+            }
+        }
+
+        function setupWaitingRoom(data) {
+            transitionToScreen('setup');
+
+            const container = document.getElementById('players-waiting-list');
+            container.innerHTML = '';
+            
+            const pCount = data.players.length;
+            document.getElementById('waiting-players-count').innerText = pCount;
+
+            data.players.forEach(p => {
+                const isThisMe = isOfflineMode ? false : (p.peerId === (myPeer ? myPeer.id : ''));
+                const isHostPlayer = isOfflineMode ? (p.name === data.host) : (p.peerId === data.hostPeerId);
+                
+                const div = document.createElement('div');
+                div.className = `p-3 rounded-lg border text-sm flex items-center justify-between font-bold ${
+                    isThisMe ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-300' : 'bg-slate-950 border-slate-800'
+                }`;
+                div.innerHTML = `
+                    <span class="truncate">${p.name} ${isThisMe ? ' (あなた)' : ''}</span>
+                    ${isHostPlayer ? '<span class="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-600/50 px-1.5 py-0.5 rounded">親</span>' : ''}
+                `;
+                container.appendChild(div);
+            });
+
+            if (isHost) {
+                document.getElementById('host-controls-area').classList.remove('hidden');
+                document.getElementById('guest-waiting-area').classList.add('hidden');
+                document.getElementById('btn-start-game-text').innerText = isOfflineMode ? "対面用のゲームを始める" : "全員で夜のターンを始める";
+                renderRolesConfigPanel(pCount);
+            } else {
+                document.getElementById('host-controls-area').classList.add('hidden');
+                document.getElementById('guest-waiting-area').classList.remove('hidden');
+            }
+        }
+
+        function renderRolesConfigPanel(pCount) {
+            const requiredCount = pCount + 2;
+            let currentSelected = 0;
+            
+            Object.values(localRoleSelection).forEach(v => currentSelected += v);
+
+            document.getElementById('required-role-count').innerText = requiredCount;
+            document.getElementById('selected-role-count').innerText = currentSelected;
+
+            const grid = document.getElementById('roles-grid');
+            grid.innerHTML = '';
+
+            Object.keys(ALL_ROLES).forEach(roleId => {
+                const r = ALL_ROLES[roleId];
+                const count = localRoleSelection[roleId] || 0;
+
+                const div = document.createElement('div');
+                div.className = `flex flex-col justify-between p-2.5 rounded-lg border transition ${count > 0 ? 'bg-slate-800/80 border-amber-500/50' : 'bg-slate-950/40 border-slate-850'}`;
+                div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-slate-300"><i class="fa-solid ${r.icon} mr-1"></i>${r.name}</span>
+                        <div class="flex items-center space-x-1.5 bg-slate-950 rounded p-0.5 border border-slate-800">
+                            <button class="btn-r-dec bg-slate-800 hover:bg-slate-700 w-4 h-4 flex items-center justify-center rounded text-[10px] text-white" data-role="${roleId}">-</button>
+                            <span class="text-xs font-bold px-1 text-white">${count}</span>
+                            <button class="btn-r-inc bg-slate-800 hover:bg-slate-700 w-4 h-4 flex items-center justify-center rounded text-[10px] text-white" data-role="${roleId}">+</button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(div);
+            });
+
+            document.querySelectorAll('.btn-r-inc').forEach(btn => {
+                btn.onclick = () => {
+                    const role = btn.dataset.role;
+                    if (localRoleSelection[role] < 4) {
+                        localRoleSelection[role]++;
+                        roomData.roleSelection = localRoleSelection;
+                        broadcastData(roomData);
+                    }
+                };
+            });
+
+            document.querySelectorAll('.btn-r-dec').forEach(btn => {
+                btn.onclick = () => {
+                    const role = btn.dataset.role;
+                    if (localRoleSelection[role] > 0) {
+                        localRoleSelection[role]--;
+                        roomData.roleSelection = localRoleSelection;
+                        broadcastData(roomData);
+                    }
+                };
+            });
+
+            const btnStart = document.getElementById('btn-start-game');
+            const errorElement = document.getElementById('setup-error');
+
+            if (currentSelected === requiredCount) {
+                btnStart.disabled = false;
+                errorElement.classList.add('hidden');
+            } else {
+                btnStart.disabled = true;
+                errorElement.innerText = `現在: ${currentSelected}枚 (お墓含め ${requiredCount}枚必要です)`;
+                errorElement.classList.remove('hidden');
+            }
+        }
+
+        document.getElementById('btn-start-game').addEventListener('click', () => {
+            if (!isHost || !roomData) return;
+
+            const playersList = roomData.players;
+            
+            let deck = [];
+            Object.keys(localRoleSelection).forEach(roleId => {
+                const count = localRoleSelection[roleId];
+                for (let i = 0; i < count; i++) {
+                    deck.push(roleId);
+                }
+            });
+
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+
+            const activePlayers = playersList.map((p, idx) => {
+                return {
+                    name: p.name,
+                    peerId: p.peerId,
+                    initialRole: deck[idx],
+                    currentRole: deck[idx],
+                    actionDone: false
+                };
+            });
+
+            const talon = [
+                { id: 'talon1', role: deck[playersList.length] },
+                { id: 'talon2', role: deck[playersList.length + 1] }
+            ];
+
+            roomData.status = 'night';
+            roomData.gameState = {
+                deck: deck,
+                activePlayers: activePlayers,
+                talon: talon,
+                actionIndex: isOfflineMode ? 0 : 1, // 対面時はプレイヤーインデックス(0)、オンライン時は行動順番オーダー(1)
+                actionLogs: ["人狼オンライン：夜が訪れました。お互いの役職が決まります。"],
+                votes: {},
+                timerSeconds: 300,
+                timerRunning: false
+            };
+
+            broadcastData(roomData);
+        });
+
+        // --- 2. NIGHT PHASE ACTIONS ---
+        function processNightPhase(data) {
+            const gState = data.gameState;
+
+            // --- A. 対面プレイ（ローカル1台）の場合の処理 ---
+            if (isOfflineMode) {
+                const curPlayerIdx = gState.actionIndex;
+                if (curPlayerIdx >= gState.activePlayers.length) {
+                    // 全プレイヤーの役職確認と行動が完了 ➔ 朝（議論）へ
+                    roomData.status = 'discussion';
+                    roomData.gameState.timerSeconds = 300;
+                    roomData.gameState.timerRunning = false;
+                    broadcastData(roomData);
+                    return;
+                }
+
+                const player = gState.activePlayers[curPlayerIdx];
+                
+                // 確認トランジション画面（次の人が画面を覗かないようにするためのインターバル）
+                transitionToScreen('nightTransition');
+                
+                document.getElementById('night-title-main').innerText = "プレイヤー交代";
+                document.getElementById('night-status-text').innerHTML = `
+                    次は <b class="text-amber-400 font-bold text-xl">${player.name}</b> さんの番です。<br>
+                    他のみんなは画面を見ないように裏返してください。
+                `;
+                document.getElementById('night-sub-order').innerHTML = `
+                    【操作手順】<br>
+                    1. ${player.name} さんにこの端末を手渡します。<br>
+                    2. 準備ができたら下のボタンを押してカードを確認してください。
+                `;
+
+                // 対面用の進行ボタンを表示
+                const transitionButtonArea = document.getElementById('offline-transition-button-area');
+                transitionButtonArea.classList.remove('hidden');
+
+                document.getElementById('btn-start-offline-turn').onclick = () => {
+                    transitionButtonArea.classList.add('hidden');
+                    renderNightActionScreen(player, data);
+                };
+                return;
+            }
+
+            // --- B. オンラインP2Pマルチプレイの場合の処理 ---
+            const me = gState.activePlayers.find(p => p.peerId === (myPeer ? myPeer.id : ''));
+            if (!me) {
+                transitionToScreen('nightTransition');
+                document.getElementById('night-status-text').innerText = "ただいまゲーム中です。観戦でお待ちください。";
+                return;
+            }
+
+            const myInitialRole = ALL_ROLES[me.initialRole];
+            const currentTurnOrder = gState.actionIndex;
+
+            if (myInitialRole.order === currentTurnOrder && !me.actionDone) {
+                renderNightActionScreen(me, data);
+            } else {
+                transitionToScreen('nightTransition');
+                const actingRoles = Object.values(ALL_ROLES).filter(r => r.order === currentTurnOrder);
+                const actingNames = actingRoles.map(r => r.name).join(' / ');
+                
+                document.getElementById('night-status-text').innerHTML = `
+                    現在は深夜です。<br>
+                    <b class="text-indigo-400 font-bold">${actingNames || '一部の役職'}</b>が行動しています。<br>
+                    周りの画面を覗かないようにお待ちください。
+                `;
+
+                if (isHost) {
+                    checkAndAdvanceNightPipeline(data);
+                }
+            }
+        }
+
+        // オンラインホスト用：夜の進行管理パイプライン
+        function checkAndAdvanceNightPipeline(data) {
+            if (isOfflineMode) return;
+            const gState = data.gameState;
+            const currentTurnOrder = gState.actionIndex;
+            const playersOfThisOrder = gState.activePlayers.filter(p => ALL_ROLES[p.initialRole].order === currentTurnOrder);
+            const allDone = playersOfThisOrder.every(p => p.actionDone);
+
+            if (allDone || playersOfThisOrder.length === 0) {
+                const nextOrder = currentTurnOrder + 1;
+                const maxOrder = 5; 
+
+                if (nextOrder > maxOrder) {
+                    roomData.status = 'discussion';
+                    roomData.gameState.timerSeconds = 300;
+                    roomData.gameState.timerRunning = false;
+                    broadcastData(roomData);
+                } else {
+                    roomData.gameState.actionIndex = nextOrder;
+                    broadcastData(roomData);
+                }
+            }
+        }
+
+        // 夜のアクション画面の描画
+        function renderNightActionScreen(myPlayerState, data) {
+            const myInitialRole = ALL_ROLES[myPlayerState.initialRole];
+
+            document.getElementById('action-player-title').innerText = myPlayerState.name;
+            document.getElementById('card-role-name').innerText = myInitialRole.name;
+            document.getElementById('card-role-team').innerText = myInitialRole.teamName;
+            document.getElementById('card-role-desc').innerText = myInitialRole.desc;
+
+            const cardDisplay = document.getElementById('card-display');
+            cardDisplay.className = `w-44 h-60 rounded-2xl border-2 flex flex-col items-center justify-center p-4 text-center shadow-xl relative overflow-hidden ${myInitialRole.colorClass}`;
+            document.getElementById('card-icon').innerHTML = `<i class="fa-solid ${myInitialRole.icon}"></i>`;
+
+            const teamLabel = document.getElementById('card-role-team');
+            if (myInitialRole.team === 'werewolf') {
+                teamLabel.className = 'text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-full bg-red-900 text-red-200 border border-red-600';
+            } else {
+                teamLabel.className = 'text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600';
+            }
+
+            setupActionInteractions(myPlayerState, data);
+            transitionToScreen('nightAction');
+        }
+
+        // 各役職ごとの選択肢生成・実行
+        function setupActionInteractions(me, data) {
+            const controls = document.getElementById('action-controls');
+            const resultText = document.getElementById('action-result-text');
+            const promptTitle = document.getElementById('action-prompt-title');
+            
+            controls.innerHTML = '';
+            resultText.innerText = '';
+            resultText.classList.add('hidden');
+
+            const otherPlayers = data.gameState.activePlayers.filter(p => p.name !== me.name);
+            const roleId = me.initialRole;
+
+            const btnComplete = document.getElementById('btn-complete-action');
+            btnComplete.disabled = true;
+            btnComplete.classList.add('opacity-40');
+
+            // 完了ボタンに文言調整（対面の場合は端末を伏せるようガイド）
+            btnComplete.innerText = isOfflineMode ? "確認完了（画面を隠す）" : "行動を完了して他の人を待つ";
+
+            function commitNightAction(actionPayload) {
+                if (isHost || isOfflineMode) {
+                    const gState = roomData.gameState;
+                    const committedPlayer = gState.activePlayers.find(p => p.name === me.name);
+                    if (committedPlayer) {
+                        committedPlayer.actionDone = true;
+                    }
+                    if (actionPayload.log) {
+                        gState.actionLogs.push(actionPayload.log);
+                    }
+                    if (actionPayload.updatedPlayers) {
+                        gState.activePlayers = actionPayload.updatedPlayers;
+                    }
+                    
+                    if (isOfflineMode) {
+                        // 次のオフラインプレイヤー確認用のトリガー設定
+                        btnComplete.onclick = () => {
+                            roomData.gameState.actionIndex++;
+                            broadcastData(roomData);
+                        };
+                    } else {
+                        broadcastData(roomData);
+                    }
+                } else {
+                    hostConnection.send({
+                        type: 'NIGHT_ACTION_COMMIT',
+                        payload: {
+                            playerName: me.name,
+                            log: actionPayload.log,
+                            updatedPlayers: actionPayload.updatedPlayers
+                        }
+                    });
+                }
+                btnComplete.disabled = false;
+                btnComplete.classList.remove('opacity-40');
+            }
+
+            switch (roleId) {
+                case 'wolf':
+                    promptTitle.innerText = '仲間の人狼の確認';
+                    const otherWolves = otherPlayers.filter(p => p.initialRole === 'wolf');
+                    if (otherWolves.length > 0) {
+                        const wolfNames = otherWolves.map(w => w.name).join('、');
+                        resultText.innerText = `仲間の人狼は 【 ${wolfNames} 】 さんです。仲間と協力して勝利を目指しましょう！`;
+                        resultText.classList.remove('hidden');
+                        commitNightAction({ log: `${me.name} が仲間の人狼の存在を確認しました。` });
+                    } else {
+                        resultText.innerText = `仲間はいません（単独人狼です）。お墓（余っているカード）のどちらか1枚をタップして覗けます。`;
+                        resultText.classList.remove('hidden');
+
+                        const div = document.createElement('div');
+                        div.className = 'grid grid-cols-2 gap-2 mt-1';
+                        div.innerHTML = `
+                            <button id="btn-peek-t1" class="bg-indigo-900/40 hover:bg-indigo-800 border border-indigo-700 p-2.5 rounded-lg text-xs font-bold transition">お墓 A を覗く</button>
+                            <button id="btn-peek-t2" class="bg-indigo-900/40 hover:bg-indigo-800 border border-indigo-700 p-2.5 rounded-lg text-xs font-bold transition">お墓 B を覗く</button>
+                        `;
+                        controls.appendChild(div);
+
+                        document.getElementById('btn-peek-t1').addEventListener('click', () => {
+                            const ref = ALL_ROLES[data.gameState.talon[0].role];
+                            resultText.innerText = `お墓 A の役職は 【 ${ref.name} 】 でした。`;
+                            disableButtons(['btn-peek-t1', 'btn-peek-t2']);
+                            commitNightAction({ log: `${me.name} が単独人狼の能力でお墓Aを確認しました。` });
+                        });
+
+                        document.getElementById('btn-peek-t2').addEventListener('click', () => {
+                            const ref = ALL_ROLES[data.gameState.talon[1].role];
+                            resultText.innerText = `お墓 B の役職は 【 ${ref.name} 】 でした。`;
+                            disableButtons(['btn-peek-t1', 'btn-peek-t2']);
+                            commitNightAction({ log: `${me.name} が単独人狼の能力でお墓Bを確認しました。` });
+                        });
+                    }
+                    break;
+
+                case 'seer':
+                    promptTitle.innerText = '占う対象を1つ選んでください';
+                    
+                    const optionDiv = document.createElement('div');
+                    optionDiv.className = 'space-y-3';
+                    
+                    let pSelect = `<p class="text-[10px] text-slate-400">プラン①：誰か1人の元の役職を見る</p><div class="grid grid-cols-2 gap-2">`;
+                    otherPlayers.forEach(p => {
+                        pSelect += `
+                            <button class="btn-seer-p bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition" data-target="${p.name}">
+                                ${p.name}
+                            </button>
+                        `;
+                    });
+                    pSelect += `</div>`;
+
+                    let tSelect = `
+                        <p class="text-[10px] text-slate-400 pt-1">プラン②：お墓（残り2枚）の役職を両方見る</p>
+                        <button id="btn-seer-t" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition">
+                            お墓（残りの2枚）を両方占う
+                        </button>
+                    `;
+
+                    optionDiv.innerHTML = pSelect + tSelect;
+                    controls.appendChild(optionDiv);
+
+                    document.querySelectorAll('.btn-seer-p').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const target = e.target.dataset.target;
+                            const targetPlayer = data.gameState.activePlayers.find(p => p.name === target);
+                            const role = ALL_ROLES[targetPlayer.initialRole];
+
+                            resultText.innerText = `${target} さんの最初の役職は 【 ${role.name} 】 でした。`;
+                            resultText.classList.remove('hidden');
+                            
+                            disableButtons(['btn-seer-t', ...document.querySelectorAll('.btn-seer-p')]);
+                            commitNightAction({ log: `${me.name} が占い師の能力で ${target} を占い、${role.name} であることを確認しました。` });
+                        });
+                    });
+
+                    document.getElementById('btn-seer-t').addEventListener('click', () => {
+                        const rA = ALL_ROLES[data.gameState.talon[0].role].name;
+                        const rB = ALL_ROLES[data.gameState.talon[1].role].name;
+
+                        resultText.innerText = `お墓のカードは 【 A: ${rA} 】 ＆ 【 B: ${rB} 】 でした。`;
+                        resultText.classList.remove('hidden');
+
+                        disableButtons(['btn-seer-t', ...document.querySelectorAll('.btn-seer-p')]);
+                        commitNightAction({ log: `${me.name} が占い師の能力でお墓の2枚（${rA}, ${rB}）を確認しました。` });
+                    });
+                    break;
+
+                case 'robber':
+                    promptTitle.innerText = 'すり替えたい相手を選んでください';
+                    
+                    const robDiv = document.createElement('div');
+                    robDiv.className = 'grid grid-cols-2 gap-2';
+                    otherPlayers.forEach(p => {
+                        robDiv.innerHTML += `
+                            <button class="btn-rob bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition" data-target="${p.name}">
+                                ${p.name}
+                            </button>
+                        `;
+                    });
+                    robDiv.innerHTML += `
+                        <button id="btn-rob-skip" class="w-full bg-slate-900 text-slate-400 text-xs py-2 rounded border border-slate-850 transition col-span-full italic">
+                            すり替えない
+                        </button>
+                    `;
+                    controls.appendChild(robDiv);
+
+                    document.querySelectorAll('.btn-rob').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const target = e.target.dataset.target;
+                            const currentPlayers = [...data.gameState.activePlayers];
+                            
+                            const myIdx = currentPlayers.findIndex(p => p.name === me.name);
+                            const tarIdx = currentPlayers.findIndex(p => p.name === target);
+
+                            const temp = currentPlayers[myIdx].currentRole;
+                            currentPlayers[myIdx].currentRole = currentPlayers[tarIdx].currentRole;
+                            currentPlayers[tarIdx].currentRole = temp;
+
+                            const gotRole = ALL_ROLES[currentPlayers[myIdx].currentRole];
+                            resultText.innerText = `${target} さんのカードを奪い、交換しました！あなたの新しい役職は 【 ${gotRole.name} 】 です。`;
+                            resultText.classList.remove('hidden');
+
+                            disableButtons(['btn-rob-skip', ...document.querySelectorAll('.btn-rob')]);
+                            commitNightAction({
+                                updatedPlayers: currentPlayers,
+                                log: `${me.name} が怪盗の能力で ${target} のカードをすり替え、自分は ${gotRole.name} になりました。`
+                            });
+                        });
+                    });
+
+                    document.getElementById('btn-rob-skip').addEventListener('click', () => {
+                        resultText.innerText = `交換を行いませんでした。`;
+                        resultText.classList.remove('hidden');
+                        disableButtons(['btn-rob-skip', ...document.querySelectorAll('.btn-rob')]);
+                        commitNightAction({ log: `${me.name} は怪盗の能力を使用しませんでした。` });
+                    });
+                    break;
+
+                case 'troublemaker':
+                    promptTitle.innerText = '入れ替える2人を選択してください';
+                    resultText.innerText = 'あなた以外の2名を選んで入れ替えます。';
+                    resultText.classList.remove('hidden');
+
+                    let selected = [];
+                    const trbDiv = document.createElement('div');
+                    trbDiv.className = 'grid grid-cols-2 gap-2';
+                    
+                    otherPlayers.forEach(p => {
+                        trbDiv.innerHTML += `
+                            <button class="btn-trb bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition" data-target="${p.name}">
+                                ${p.name}
+                            </button>
+                        `;
+                    });
+                    trbDiv.innerHTML += `
+                        <button id="btn-trb-skip" class="w-full bg-slate-900 text-slate-400 text-xs py-2 rounded border border-slate-850 transition col-span-full italic">
+                            入れ替えない
+                        </button>
+                    `;
+                    controls.appendChild(trbDiv);
+
+                    document.querySelectorAll('.btn-trb').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const target = e.target.dataset.target;
+                            
+                            if (selected.includes(target)) {
+                                selected = selected.filter(x => x !== target);
+                                e.target.className = "bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition";
+                            } else {
+                                if (selected.length < 2) {
+                                    selected.push(target);
+                                    e.target.className = "bg-amber-900/40 text-amber-300 text-xs py-2 rounded border border-amber-600 transition font-bold";
+                                }
+                            }
+
+                            if (selected.length === 2) {
+                                disableButtons(['btn-trb-skip', ...document.querySelectorAll('.btn-trb')]);
+                                const currentPlayers = [...data.gameState.activePlayers];
+                                
+                                const idx1 = currentPlayers.findIndex(p => p.name === selected[0]);
+                                const idx2 = currentPlayers.findIndex(p => p.name === selected[1]);
+
+                                const temp = currentPlayers[idx1].currentRole;
+                                currentPlayers[idx1].currentRole = currentPlayers[idx2].currentRole;
+                                currentPlayers[idx2].currentRole = temp;
+
+                                resultText.innerText = `【 ${selected[0]} 】 さんと 【 ${selected[1]} 】 さんの役職カードを密かに入れ替えました。`;
+                                commitNightAction({
+                                    updatedPlayers: currentPlayers,
+                                    log: `${me.name} がトラブルメーカーの能力で、${selected[0]} と ${selected[1]} のカードを入れ替えました。`
+                                });
+                            }
+                        });
+                    });
+
+                    document.getElementById('btn-trb-skip').addEventListener('click', () => {
+                        resultText.innerText = `入れ替えを行いませんでした。`;
+                        disableButtons(['btn-trb-skip', ...document.querySelectorAll('.btn-trb')]);
+                        commitNightAction({ log: `${me.name} はトラブルメーカーの能力を使用しませんでした。` });
+                    });
+                    break;
+
+                case 'mason':
+                    promptTitle.innerText = '仲間の確認';
+                    const otherMasons = otherPlayers.filter(p => p.initialRole === 'mason');
+                    if (otherMasons.length > 0) {
+                        const mNames = otherMasons.map(m => m.name).join('、');
+                        resultText.innerText = `もう一人の石工は 【 ${mNames} 】 さんです。`;
+                    } else {
+                        resultText.innerText = `もう一人の石工はどこかのプレイヤーか、お墓に隠れています。`;
+                    }
+                    resultText.classList.remove('hidden');
+                    commitNightAction({ log: `${me.name} が石工の存在を確認しました。` });
+                    break;
+
+                case 'insomniac':
+                    promptTitle.innerText = '不眠症の確認';
+                    const curRole = ALL_ROLES[me.currentRole];
+                    resultText.innerText = `朝が来る直前の、現在のあなたの役職は 【 ${curRole.name} 】 です。`;
+                    resultText.classList.remove('hidden');
+                    commitNightAction({ log: `${me.name} が不眠症の能力で自分の最終役職（${curRole.name}）を確認しました。` });
+                    break;
+
+                case 'villager':
+                default:
+                    promptTitle.innerText = '夜の行動はありません';
+                    resultText.innerText = 'あなたは市民です。夜の能力はありません。静かに眠って朝に備えましょう。';
+                    resultText.classList.remove('hidden');
+                    commitNightAction({ log: `${me.name}（市民）は朝を待ちました。` });
+                    break;
+            }
+        }
+
+        function disableButtons(ids) {
+            ids.forEach(id => {
+                const el = typeof id === 'string' ? document.getElementById(id) : id;
+                if (el) {
+                    el.disabled = true;
+                    el.classList.add('opacity-40');
+                }
+            });
+        }
+
+        // オンライン用のアクション完了確認ボタン
+        document.getElementById('btn-complete-action').addEventListener('click', () => {
+            if (isOfflineMode) return; // オフライン時は上のcommitNightAction内でのボタンイベント処理に委ねる
+            transitionToScreen('nightTransition');
+            document.getElementById('night-status-text').innerText = "行動を記録しました。他のプレイヤーの終了をお待ちください...";
+        });
+
+
+        // --- 3. DISCUSSION & REAL-TIME VOTING ---
+        function processDiscussionPhase(data) {
+            transitionToScreen('discussion');
+            const gState = data.gameState;
+
+            // 制限時間表示更新
+            const min = Math.floor(gState.timerSeconds / 60);
+            const sec = gState.timerSeconds % 60;
+            document.getElementById('discussion-timer').innerText = 
+                `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+
+            // タイマー管理 (ホスト側が毎秒カウントを送信)
+            if (localTimerInterval) clearInterval(localTimerInterval);
+
+            if (isHost && gState.timerRunning && gState.timerSeconds > 0) {
+                localTimerInterval = setInterval(() => {
+                    roomData.gameState.timerSeconds--;
+                    if (roomData.gameState.timerSeconds <= 0) {
+                        roomData.gameState.timerSeconds = 0;
+                        roomData.gameState.timerRunning = false;
+                        clearInterval(localTimerInterval);
+                    }
+                    broadcastData(roomData);
+                }, 1000);
+            }
+
+            // ホストコントロール
+            if (isHost) {
+                document.getElementById('timer-host-controls').classList.remove('hidden');
+            } else {
+                document.getElementById('timer-host-controls').classList.add('hidden');
+            }
+
+            // 投票セレクトボックス
+            const totalPlayers = gState.activePlayers.length;
+            const votesMap = gState.votes || {};
+            const castCount = Object.keys(votesMap).length;
+
+            if (isOfflineMode) {
+                // 対面プレイ時は、1台の画面に全員の投票プルダウンを一挙に表示
+                document.getElementById('online-voting-input-area').classList.add('hidden');
+                document.getElementById('vote-badges-outer').classList.add('hidden');
+                
+                const offlineVotingArea = document.getElementById('offline-voting-inputs-area');
+                offlineVotingArea.classList.remove('hidden');
+                offlineVotingArea.innerHTML = '<p class="text-xs font-bold text-slate-400">全員の投票先を入力してください：</p>';
+                
+                gState.activePlayers.forEach(voter => {
+                    const voterDiv = document.createElement('div');
+                    voterDiv.className = 'bg-slate-950 p-3 rounded-lg border border-slate-800 flex justify-between items-center';
+                    
+                    let optionsHtml = `<option value="">-- ${voter.name} の投票先 --</option>`;
+                    gState.activePlayers.forEach(target => {
+                        if (target.name !== voter.name) {
+                            optionsHtml += `<option value="${target.name}">${target.name}</option>`;
+                        }
+                    });
+                    optionsHtml += `<option value="peace">平和村（誰も吊らない）</option>`;
+
+                    voterDiv.innerHTML = `
+                        <span class="text-xs font-bold text-slate-300">${voter.name}</span>
+                        <select class="offline-voter-select bg-slate-900 border border-slate-700 rounded text-xs py-1 px-2 text-white" data-voter="${voter.name}">
+                            ${optionsHtml}
+                        </select>
+                    `;
+                    offlineVotingArea.appendChild(voterDiv);
+                });
+
+                // セレクトボックスの変更をキャッチ
+                document.querySelectorAll('.offline-voter-select').forEach(sel => {
+                    // 保存されている値があれば復元
+                    const currentVote = votesMap[sel.dataset.voter] || '';
+                    sel.value = currentVote;
+
+                    sel.addEventListener('change', (e) => {
+                        const vName = e.target.dataset.voter;
+                        roomData.gameState.votes[vName] = e.target.value;
+                        
+                        // 全員の投票が入ったかチェック
+                        const updatedVotesCount = Object.keys(roomData.gameState.votes).filter(k => roomData.gameState.votes[k] !== "").length;
+                        const revealBtn = document.getElementById('btn-reveal-results-manual');
+                        
+                        document.getElementById('vote-count-status').innerText = `投票完了: ${updatedVotesCount} / ${totalPlayers}名`;
+
+                        if (updatedVotesCount === totalPlayers) {
+                            revealBtn.classList.remove('hidden');
+                        } else {
+                            revealBtn.classList.add('hidden');
+                        }
+                    });
+                });
+
+                document.getElementById('vote-count-status').innerText = `投票完了: ${castCount} / ${totalPlayers}名`;
+                if (castCount === totalPlayers) {
+                    document.getElementById('btn-reveal-results-manual').classList.remove('hidden');
+                } else {
+                    document.getElementById('btn-reveal-results-manual').classList.add('hidden');
+                }
+
+            } else {
+                // オンラインP2Pマルチプレイ時
+                document.getElementById('online-voting-input-area').classList.remove('hidden');
+                document.getElementById('vote-badges-outer').classList.remove('hidden');
+                document.getElementById('offline-voting-inputs-area').classList.add('hidden');
+
+                renderVoterTargetDropdown(data);
+                document.getElementById('vote-count-status').innerText = `投票完了: ${castCount} / ${totalPlayers}名`;
+
+                // バッジ表示
+                const badgesContainer = document.getElementById('vote-status-badges');
+                badgesContainer.innerHTML = '';
+                gState.activePlayers.forEach(p => {
+                    const hasVoted = !!votesMap[p.name];
+                    const badge = document.createElement('span');
+                    badge.className = `text-[10px] px-2 py-0.5 rounded font-bold ${
+                        hasVoted ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-900 text-slate-500 border border-slate-800'
+                    }`;
+                    badge.innerText = `${p.name} ${hasVoted ? '✓' : '...'}`;
+                    badgesContainer.appendChild(badge);
+                });
+
+                if (isHost && castCount === totalPlayers) {
+                    document.getElementById('btn-reveal-results-manual').classList.remove('hidden');
+                } else {
+                    document.getElementById('btn-reveal-results-manual').classList.add('hidden');
+                }
+            }
+        }
+
+        // タイマースタート一時停止ボタン
+        document.getElementById('btn-timer-toggle').addEventListener('click', () => {
+            if (!isHost || !roomData) return;
+            roomData.gameState.timerRunning = !roomData.gameState.timerRunning;
+            broadcastData(roomData);
+        });
+
+        // 投票先の選択リスト生成
+        let lastVoterHash = '';
+        function renderVoterTargetDropdown(data) {
+            const gState = data.gameState;
+            const me = gState.activePlayers.find(p => p.peerId === (myPeer ? myPeer.id : ''));
+            if (!me) return;
+
+            const targets = gState.activePlayers.filter(p => p.name !== me.name);
+            const hash = targets.map(t => t.name).join(',');
+            
+            if (lastVoterHash === hash) return; 
+            lastVoterHash = hash;
+
+            const selector = document.getElementById('my-vote-selector');
+            selector.innerHTML = `<option value="">-- 投票先を選択 --</option>`;
+            
+            targets.forEach(t => {
+                selector.innerHTML += `<option value="${t.name}">${t.name}</option>`;
+            });
+            selector.innerHTML += `<option value="peace">平和村（人狼はいない・誰も追放しない）</option>`;
+        }
+
+        // 投票ボタン送信（オンライン専用）
+        document.getElementById('btn-cast-vote').addEventListener('click', (e) => {
+            const sel = document.getElementById('my-vote-selector');
+            const target = sel.value;
+            if (!target) {
+                showModal('投票エラー', '投票する対象を選択してください。');
+                return;
+            }
+
+            if (isHost) {
+                roomData.gameState.votes[myNickname] = target;
+                broadcastData(roomData);
+            } else {
+                hostConnection.send({
+                    type: 'CAST_VOTE',
+                    payload: { voterName: myNickname, targetName: target }
+                });
+            }
+
+            e.target.disabled = true;
+            e.target.innerText = "投票しました！";
+            e.target.className = "w-full py-2.5 bg-emerald-700 text-emerald-300 text-xs font-bold rounded-lg transition opacity-60";
+            sel.disabled = true;
+        });
+
+        // ホストによる結果集計処理 (オンライン/オフライン共用)
+        document.getElementById('btn-reveal-results-manual').addEventListener('click', () => {
+            if (!isHost || !roomData) return;
+
+            const gState = roomData.gameState;
+            const tally = {};
+            gState.activePlayers.forEach(p => tally[p.name] = 0);
+            tally['peace'] = 0;
+
+            Object.values(gState.votes).forEach(vote => {
+                if (vote) tally[vote] = (tally[vote] || 0) + 1;
+            });
+
+            let maxVotes = 0;
+            let executed = [];
+
+            Object.keys(tally).forEach(name => {
+                if (tally[name] > maxVotes) {
+                    maxVotes = tally[name];
+                    executed = [name];
+                } else if (tally[name] === maxVotes && maxVotes > 0) {
+                    executed.push(name);
+                }
+            });
+
+            // 1票ずつの同票、または平和処刑
+            const isTieOfOne = maxVotes === 1;
+            if (isTieOfOne) {
+                executed = [];
+            }
+
+            const activeWerewolves = gState.activePlayers.filter(p => p.currentRole === 'wolf');
+            const werewolvesExist = activeWerewolves.length > 0;
+
+            let winnerTeam = 'villager';
+
+            if (executed.includes('peace') || executed.length === 0) {
+                if (werewolvesExist) {
+                    winnerTeam = 'werewolf';
+                } else {
+                    winnerTeam = 'villager';
+                }
+            } else {
+                // 処刑されたなかに人狼が1人でもいれば市民の勝ち
+                const executedAWerewolf = executed.some(name => {
+                    const p = gState.activePlayers.find(x => x.name === name);
+                    return p && p.currentRole === 'wolf';
+                });
+
+                if (executedAWerewolf) {
+                    winnerTeam = 'villager';
+                } else {
+                    if (werewolvesExist) {
+                        winnerTeam = 'werewolf';
+                    } else {
+                        winnerTeam = 'werewolf_no_wolves'; 
+                    }
+                }
+            }
+
+            roomData.status = 'result';
+            roomData.gameState.winnerTeam = winnerTeam;
+            roomData.gameState.executed = executed;
+            broadcastData(roomData);
+        });
+
+
+        // --- 4. RESULTS DISPLAY ---
+        function processResultPhase(data) {
+            transitionToScreen('result');
+            const gState = data.gameState;
+            
+            const winBanner = document.getElementById('result-winner-team');
+            if (gState.winnerTeam === 'villager') {
+                winBanner.innerText = '市民チームの勝利！';
+                winBanner.className = 'text-3xl font-bold text-emerald-400 wolf-title tracking-wider';
+            } else if (gState.winnerTeam === 'werewolf') {
+                winBanner.innerText = '人狼チームの勝利！';
+                winBanner.className = 'text-3xl font-bold text-red-500 wolf-title tracking-wider';
+            } else {
+                winBanner.innerText = '平和村の追放失敗（人狼はいませんでした）';
+                winBanner.className = 'text-3xl font-bold text-amber-500 wolf-title tracking-wider';
+            }
+
+            // 処刑結果
+            const execDisplay = document.getElementById('result-executed-players');
+            const executed = gState.executed || [];
+            if (executed.length === 0) {
+                execDisplay.innerHTML = `<span class="text-emerald-400">平和村（誰も追放されませんでした）</span>`;
+            } else {
+                execDisplay.innerHTML = executed.map(name => {
+                    if (name === 'peace') return '平和村希望';
+                    const p = gState.activePlayers.find(x => x.name === name);
+                    const curRoleName = p ? ALL_ROLES[p.currentRole].name : '';
+                    return `<span class="text-white font-bold">${name}</span> (${curRoleName})`;
+                }).join(' ＆ ');
+            }
+
+            // 役職公開
+            const breakContainer = document.getElementById('result-roles-reveal');
+            breakContainer.innerHTML = '';
+
+            gState.activePlayers.forEach(p => {
+                const init = ALL_ROLES[p.initialRole];
+                const curr = ALL_ROLES[p.currentRole];
+                const votesGot = Object.values(gState.votes || {}).filter(v => v === p.name).length;
+
+                const div = document.createElement('div');
+                div.className = 'bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2';
+                
+                let changeIndicator = '';
+                if (p.initialRole !== p.currentRole) {
+                    changeIndicator = `<span class="text-amber-400 font-bold ml-1">【途中で役職変動】</span>`;
+                }
+
+                div.innerHTML = `
+                    <div>
+                        <div class="text-sm font-bold text-white flex items-center space-x-2">
+                            <span>${p.name}</span>
+                            <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">${votesGot} 票獲得</span>
+                        </div>
+                        <div class="text-slate-400 mt-1">
+                            当初: <span class="text-slate-300 font-medium">${init.name}</span> ➔ 
+                            最終: <span class="text-white font-bold">${curr.name}</span> ${changeIndicator}
+                        </div>
+                    </div>
+                    <div class="text-[10px] px-2 py-1 bg-slate-900 rounded border border-slate-800 text-right text-slate-300 font-mono">
+                        投票先: ${gState.votes[p.name] === 'peace' ? '平和村' : (gState.votes[p.name] || 'なし')}
+                    </div>
+                `;
+                breakContainer.appendChild(div);
+            });
+
+            // お墓
+            const talonContainer = document.getElementById('result-talon-cards');
+            talonContainer.innerHTML = '';
+            gState.talon.forEach((t, idx) => {
+                const r = ALL_ROLES[t.role];
+                const div = document.createElement('div');
+                div.className = 'bg-slate-900 p-2.5 rounded border border-slate-800 text-xs text-center';
+                div.innerHTML = `
+                    <span class="text-slate-500 block text-[10px] mb-0.5">お墓 ${idx === 0 ? 'A' : 'B'}</span>
+                    <strong class="text-slate-200 text-sm">${r.name}</strong>
+                `;
+                talonContainer.appendChild(div);
+            });
+
+            // 夜の行動ログ
+            const logContainer = document.getElementById('result-action-log');
+            logContainer.innerHTML = '';
+            (gState.actionLogs || []).forEach(log => {
+                const p = document.createElement('p');
+                p.className = 'border-l-2 border-indigo-500/50 pl-2 py-0.5 text-left';
+                p.innerText = log;
+                logContainer.appendChild(p);
+            });
+
+            // 再プレイ領域
+            if (isHost) {
+                document.getElementById('host-restart-area').classList.remove('hidden');
+                document.getElementById('guest-restart-area').classList.add('hidden');
+            } else {
+                document.getElementById('host-restart-area').classList.add('hidden');
+                document.getElementById('guest-restart-area').classList.remove('hidden');
+            }
+
+            // 投票状態のクリアとプルダウンの有効化
+            const castBtn = document.getElementById('btn-cast-vote');
+            castBtn.disabled = false;
+            castBtn.innerText = "投票を送信する";
+            castBtn.className = "w-full py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition";
+            document.getElementById('my-vote-selector').disabled = false;
+        }
+
+        // ホストによるゲームの初期化再プレイ
+        document.getElementById('btn-restart-game').addEventListener('click', () => {
+            if (!isHost || !roomData) return;
+
+            const nextPlayers = roomData.players.map(p => {
+                return { name: p.name, peerId: p.peerId };
+            });
+
+            roomData.status = 'waiting';
+            roomData.players = nextPlayers;
+            roomData.gameState = {
+                deck: [],
+                activePlayers: [],
+                talon: [],
+                actionIndex: isOfflineMode ? 0 : 1,
+                actionLogs: [],
+                votes: {},
+                timerSeconds: 300,
+                timerRunning: false
+            };
+
+            broadcastData(roomData);
+        });
+
+    </script>
+</body>
+</html>
