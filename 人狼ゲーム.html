@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ワンナイト人狼オンラインマルチプレイヤー</title>
+    <!-- Tailwind CSS for elegant styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDK (Compat version for inline browser scripting) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Yusei+Magic&family=Zen+Maru+Gothic:wght@400;700&display=swap');
+        body {
+            font-family: 'Zen Maru Gothic', sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+        .wolf-title {
+            font-family: 'Yusei Magic', sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-red-900/40 p-4 sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-wolf-pack-battalion text-red-600 text-2xl animate-pulse"></i>
+                <h1 class="text-xl md:text-2xl font-bold tracking-wider text-red-500 wolf-title">ワンナイト人狼 Online</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span id="display-room-id" class="hidden bg-slate-800 text-amber-400 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 font-bold">
+                    部屋: <span id="current-room-code" class="text-white tracking-widest ml-1">----</span>
+                </span>
+                <button id="btn-reset" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition">
+                    <i class="fa-solid fa-house mr-1"></i>ロビーへ
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow max-w-2xl w-full mx-auto p-4 flex flex-col justify-center">
+
+        <!-- 0. LOBBY SCREEN (ロビー画面) -->
+        <section id="screen-lobby" class="bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-3 py-4">
+                <i class="fa-solid fa-moon text-6xl text-indigo-400 animate-pulse"></i>
+                <h2 class="text-3xl font-bold text-red-400 wolf-title tracking-wider">オンラインマルチプレイ</h2>
+                <p class="text-sm text-slate-400">それぞれのスマホから同じ部屋に入り、リアルタイムで人狼ゲームを遊ぶことができます。</p>
+            </div>
+
+            <!-- Set Nickname -->
+            <div class="space-y-2 bg-slate-950/60 p-4 rounded-xl border border-slate-850">
+                <label class="block text-xs font-bold text-slate-400 tracking-wider">あなたのニックネーム</label>
+                <input type="text" id="input-nickname" class="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 px-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-bold" placeholder="名前を入力してください">
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <!-- Create Room -->
+                <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <h3 class="font-bold text-white text-sm">新しく部屋を作る</h3>
+                        <p class="text-xs text-slate-500 mt-1">あなたがホスト（ゲームマスター役職設定など）になり、友達を招待します。</p>
+                    </div>
+                    <button id="btn-create-room" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition text-sm">
+                        部屋を作成する
+                    </button>
+                </div>
+
+                <!-- Join Room -->
+                <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <h3 class="font-bold text-white text-sm">すでにある部屋に入る</h3>
+                        <p class="text-xs text-slate-500 mt-1">友達が作った部屋の「4桁の部屋コード」を入力してください。</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <input type="text" id="input-room-code" maxlength="4" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg text-center font-mono text-lg font-bold tracking-widest text-amber-400" placeholder="0000">
+                        <button id="btn-join-room" class="w-1/2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition text-sm">
+                            部屋に入る
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. WAITING ROOM / SETUP SCREEN (待機室・設定画面) -->
+        <section id="screen-setup" class="hidden bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-1">
+                <span class="text-xs bg-slate-800 text-slate-400 px-3 py-1 rounded-full border border-slate-750 font-mono tracking-widest">
+                    ROOM CODE: <b id="setup-room-code" class="text-amber-400">----</b>
+                </span>
+                <h2 class="text-2xl font-bold text-red-400 wolf-title pt-3">ゲーム待機室</h2>
+                <p class="text-xs text-slate-400">友達が参加するのを待ちましょう。ホストが役職を設定してゲームを開始します。</p>
+            </div>
+
+            <!-- Players List in Room -->
+            <div class="space-y-3">
+                <label class="block text-sm font-bold text-slate-300">
+                    <i class="fa-solid fa-users text-indigo-400 mr-1"></i>現在の参加プレイヤー (<span id="waiting-players-count">0</span>名)
+                </label>
+                <div id="players-waiting-list" class="grid grid-cols-2 gap-2">
+                    <!-- Dynamic player labels -->
+                </div>
+            </div>
+
+            <!-- Roles Selection (Only visible/editable by Host) -->
+            <div id="host-controls-area" class="space-y-4 pt-2 border-t border-slate-800 hidden">
+                <div class="flex justify-between items-center">
+                    <label class="block text-sm font-bold text-slate-300">
+                        <i class="fa-solid fa-id-card text-yellow-500 mr-1"></i>役職の設定（ホストのみ）
+                    </label>
+                    <span id="role-counter" class="text-xs bg-slate-800 px-2.5 py-1 rounded-full border border-slate-700">
+                        選択中: <span id="selected-role-count" class="font-bold text-yellow-400">0</span> / 必要数: <span id="required-role-count" class="font-bold text-slate-300">0</span>
+                    </span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3" id="roles-grid">
+                    <!-- Roles will be inserted dynamically -->
+                </div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    <i class="fa-solid fa-circle-info mr-1"></i>役職の合計枚数は <b>プレイヤー人数 ＋ 2枚</b>（場に残るカード）にする必要があります。
+                </p>
+
+                <!-- Start Button (Host only) -->
+                <div class="pt-2">
+                    <button id="btn-start-game" class="w-full py-4 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold rounded-xl shadow-lg transition duration-200 transform active:scale-95 text-lg flex justify-center items-center space-x-2 disabled:opacity-50 disabled:pointer-events-none">
+                        <i class="fa-solid fa-moon"></i> <span>全員で夜のターンを始める</span>
+                    </button>
+                    <p id="setup-error" class="text-red-400 text-xs text-center mt-2 hidden"></p>
+                </div>
+            </div>
+
+            <!-- Guest Waiting Message -->
+            <div id="guest-waiting-area" class="p-4 bg-slate-950/60 rounded-xl text-center border border-slate-850 text-sm text-slate-400 space-y-2">
+                <div class="flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-spinner animate-spin text-indigo-400"></i>
+                    <span>ホストがゲームを開始するのを待っています...</span>
+                </div>
+                <p class="text-xs text-slate-500">※開始前にホストが現在の参加人数に合わせた役職の調整を行います。</p>
+            </div>
+        </section>
+
+        <!-- 2. NIGHT TURN OVERVIEW (夜のターン・待機状態または行動ターン) -->
+        <section id="screen-night-transition" class="hidden bg-slate-900/90 p-8 rounded-2xl border border-slate-800 shadow-2xl text-center space-y-6">
+            <div id="night-waiting-others" class="space-y-4 py-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-slate-800/80 rounded-full border border-indigo-500/30 mb-2 relative">
+                    <i class="fa-solid fa-moon text-indigo-400 text-4xl animate-pulse"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-200 wolf-title">真夜中の時間...</h2>
+                <p class="text-sm text-slate-400" id="night-status-text">他のプレイヤーが行動を選択しています。<br>画面を隠して静かにお待ちください。</p>
+                <div class="p-3 bg-slate-950/40 rounded-lg text-xs text-slate-500 max-w-xs mx-auto">
+                    現在の行動順： 人狼 ➔ 占い師 ➔ 怪盗 ➔ トラブルメーカー ➔ 不眠症
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. ACTION SCREEN (各個人の夜の行動・カード確認) -->
+        <section id="screen-night-action" class="hidden bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <span class="text-slate-400 text-xs">あなたの番です: <b class="text-white" id="action-player-title">---</b></span>
+                <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-indigo-900/50 text-indigo-300 border border-indigo-700/50">あなたの夜の行動</span>
+            </div>
+
+            <!-- Card Flip Area -->
+            <div class="flex flex-col items-center justify-center py-2">
+                <div id="card-display" class="w-44 h-60 bg-slate-950 rounded-2xl border-2 border-amber-500/50 flex flex-col items-center justify-center p-4 text-center shadow-xl relative overflow-hidden">
+                    <div class="absolute inset-0 bg-radial-gradient from-transparent to-slate-950 opacity-50"></div>
+                    <div id="card-icon" class="text-4xl text-amber-500 mb-3 z-10">
+                        <i class="fa-solid fa-wolf-pack-battalion"></i>
+                    </div>
+                    <div id="card-role-name" class="text-xl font-bold text-white wolf-title tracking-wider z-10">役職名</div>
+                    <div id="card-role-team" class="text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-full z-10">陣営</div>
+                    <p id="card-role-desc" class="text-[11px] text-slate-400 mt-3 leading-relaxed z-10">役職の説明文がここに入ります。</p>
+                </div>
+            </div>
+
+            <!-- Action Prompt & Form (Dynamic per role) -->
+            <div id="action-interactive-area" class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                <h4 class="font-bold text-xs text-slate-300" id="action-prompt-title">夜の能力を実行してください</h4>
+                <div id="action-controls" class="space-y-2">
+                    <!-- Target selectors will appear here -->
+                </div>
+                <div id="action-result-text" class="text-xs text-amber-400 font-bold hidden bg-amber-950/20 p-3 rounded-lg border border-amber-900/30">
+                    <!-- Action results shown here immediately if applicable -->
+                </div>
+            </div>
+
+            <!-- Next Confirm Button -->
+            <button id="btn-complete-action" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-md">
+                行動を完了して他の人を待つ
+            </button>
+        </section>
+
+        <!-- 4. TALK TIME & VOTING (議論と投票) -->
+        <section id="screen-discussion" class="hidden bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <h2 class="text-2xl font-bold text-amber-500 wolf-title flex justify-center items-center">
+                    <i class="fa-solid fa-sun mr-2 animate-spin text-amber-400" style="style: animation-duration: 15s;"></i> 朝が来ました！
+                </h2>
+                <p class="text-xs text-slate-400">話し合いを行い、誰が人狼なのかを推理しましょう。</p>
+            </div>
+
+            <!-- Timer Area -->
+            <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 text-center space-y-2">
+                <div class="text-3xl font-mono font-bold text-white tracking-widest" id="discussion-timer">05:00</div>
+                <div id="timer-host-controls" class="flex justify-center space-x-2 hidden">
+                    <button id="btn-timer-toggle" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-3 py-1.5 rounded-lg font-bold transition">
+                        <i class="fa-solid fa-play mr-1"></i>スタート / 一時停止
+                    </button>
+                </div>
+                <div id="timer-guest-status" class="text-[10px] text-slate-500">
+                    （議論時間はホストが管理・同期します）
+                </div>
+            </div>
+
+            <!-- Voting Section -->
+            <div class="space-y-4 pt-2">
+                <h3 class="font-bold text-sm text-slate-300 border-b border-slate-800 pb-2 flex items-center justify-between">
+                    <span><i class="fa-solid fa-check-to-slot text-red-500 mr-1"></i>投票をおこなう</span>
+                    <span class="text-xs text-slate-400" id="vote-count-status">未投票: 0人</span>
+                </h3>
+                
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                    <label class="block text-xs font-bold text-slate-400">あなたの投票先：</label>
+                    <select id="my-vote-selector" class="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm py-2 px-3 text-white focus:ring-2 focus:ring-red-500 focus:border-red-500">
+                        <!-- Target options dynamically filled -->
+                    </select>
+                    <button id="btn-cast-vote" class="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition">
+                        投票を送信する
+                    </button>
+                </div>
+
+                <div class="p-3 bg-slate-950/40 rounded-lg border border-slate-850">
+                    <h4 class="text-[10px] font-bold text-slate-500 mb-1.5">投票状況</h4>
+                    <div id="vote-status-badges" class="flex flex-wrap gap-1.5">
+                        <!-- Badges showing who voted -->
+                    </div>
+                </div>
+
+                <button id="btn-reveal-results-manual" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-md hidden">
+                    集計して結果を発表する（ホスト専用）
+                </button>
+            </div>
+        </section>
+
+        <!-- 5. RESULT SCREEN (結果発表) -->
+        <section id="screen-result" class="hidden bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center justify-center w-14 h-14 bg-red-950/50 rounded-full border border-red-500 mb-2">
+                    <i class="fa-solid fa-skull-crossbones text-red-500 text-2xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold wolf-title tracking-wider" id="result-winner-team">---</h2>
+                <p class="text-xs text-slate-400">今回のゲーム結果と、それぞれが迎えた最終的な正体です。</p>
+            </div>
+
+            <!-- Execution Result -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-1">
+                <h3 class="text-xs font-bold text-slate-400">処刑されたプレイヤー</h3>
+                <div class="text-lg font-bold text-red-400" id="result-executed-players">---</div>
+            </div>
+
+            <!-- Roles Reveal List -->
+            <div class="space-y-3">
+                <h3 class="font-bold text-sm text-slate-300 border-b border-slate-800 pb-2"><i class="fa-solid fa-eye text-indigo-400 mr-1"></i>最終的な役職の内訳</h3>
+                <div class="grid grid-cols-1 gap-2" id="result-roles-reveal">
+                    <!-- Players real roles and original roles -->
+                </div>
+                
+                <div class="mt-4 p-4 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
+                    <h4 class="text-xs font-bold text-slate-400">お墓・場に残ったカード</h4>
+                    <div id="result-talon-cards" class="grid grid-cols-2 gap-2">
+                        <!-- Leftover card info -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Log -->
+            <div class="space-y-2">
+                <h3 class="font-bold text-sm text-slate-300 border-b border-slate-800 pb-2"><i class="fa-solid fa-receipt text-amber-500 mr-1"></i>夜の行動ログ</h3>
+                <div id="result-action-log" class="text-[11px] text-slate-400 space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-800 max-h-32 overflow-y-auto">
+                    <!-- Actions printed here -->
+                </div>
+            </div>
+
+            <!-- Reset Button (Only Host can trigger next round) -->
+            <div id="host-restart-area" class="hidden">
+                <button id="btn-restart-game" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95 text-md">
+                    同じメンバーで新しく始める
+                </button>
+            </div>
+            <div id="guest-restart-area" class="text-xs text-center text-slate-500 p-3 bg-slate-950/30 rounded-lg">
+                ホストが次のゲームを新しく開始するのをお待ちください...
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-950 p-4 text-center text-xs text-slate-500 border-t border-slate-900">
+        <p>© 2026 ワンナイト人狼オンラインマルチプレイヤー. All Rights Reserved.</p>
+    </footer>
+
+    <!-- Description Dialog Custom (No browser alerts allowed) -->
+    <div id="custom-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <h3 class="text-lg font-bold text-white flex items-center space-x-2" id="modal-title">
+                <i class="fa-solid fa-circle-exclamation text-amber-500"></i> <span>確認</span>
+            </h3>
+            <p class="text-sm text-slate-300 leading-relaxed" id="modal-body">メッセージがここに入ります。</p>
+            <div class="flex justify-end pt-2">
+                <button id="btn-modal-close" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition">
+                    了解
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Javascript Logical Core -->
+    <script>
+        // --- GAME STORES & SETTINGS ---
+        const ALL_ROLES = {
+            wolf: {
+                id: 'wolf',
+                name: '人狼',
+                team: 'werewolf',
+                teamName: '人狼陣営',
+                colorClass: 'bg-red-900/50 text-red-300 border-red-700',
+                icon: 'fa-wolf-pack-battalion text-red-500',
+                desc: '仲間の人狼が誰なのかを確認できます。人狼が一人の場合は、場に残されたカード（墓）の1枚を見るチャンスがあります。',
+                order: 1
+            },
+            seer: {
+                id: 'seer',
+                name: '占い師',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-indigo-900/50 text-indigo-300 border-indigo-700',
+                icon: 'fa-wand-magic-sparkles text-indigo-400',
+                desc: '夜の間に誰か1人のカード、または場に残されたカード（墓）を2枚確認することができます。',
+                order: 2
+            },
+            robber: {
+                id: 'robber',
+                name: '怪盗',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-amber-900/50 text-amber-300 border-amber-700',
+                icon: 'fa-mask text-amber-400',
+                desc: '夜の間に自分と他の誰かのカードをすり替えることができます。すり替えた後のカードをこっそり確認します。',
+                order: 3
+            },
+            villager: {
+                id: 'villager',
+                name: '市民',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
+                icon: 'fa-user text-emerald-400',
+                desc: '夜の行動はありません。昼の議論において、言葉巧みな人狼をあぶり出すように推理しましょう。',
+                order: 0 // Actionless
+            },
+            troublemaker: {
+                id: 'troublemaker',
+                name: 'トラブルメーカー',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-purple-900/50 text-purple-300 border-purple-700',
+                icon: 'fa-shuffle text-purple-400',
+                desc: '他のプレイヤー２人のカードをこっそり入れ替えます。ただし自分はその内容を知ることはできません。',
+                order: 4
+            },
+            mason: {
+                id: 'mason',
+                name: '共同墓地（石工）',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-slate-700/50 text-slate-300 border-slate-600',
+                icon: 'fa-hammer text-slate-400',
+                desc: '他の「石工」が誰であるかを確認できます。（2枚セットで遊ぶことをおすすめします）',
+                order: 1.5 // Joint with wolf info step roughly
+            },
+            insomniac: {
+                id: 'insomniac',
+                name: '不眠症',
+                team: 'villager',
+                teamName: '市民陣営',
+                colorClass: 'bg-pink-900/50 text-pink-300 border-pink-700',
+                icon: 'fa-eye text-pink-400',
+                desc: '夜の最後に、自分のカードが誰かにすり替えられていないか最終確認をすることができます。',
+                order: 5
+            }
+        };
+
+        // Local Settings & Session States
+        let myNickname = localStorage.getItem('werewolf_nickname') || '';
+        let myRoomId = '';
+        let isHost = false;
+        let roomUnsubscribe = null;
+
+        // Firebase Setup (MANDATORY setup from injected credentials)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'werewolf-online-default';
+
+        // Helper: Generate Random Room ID
+        function generateRoomCode() {
+            return String(Math.floor(1000 + Math.random() * 9000));
+        }
+
+        // Custom Local Modal
+        function showModal(title, text) {
+            document.getElementById('modal-title').querySelector('span').innerText = title;
+            document.getElementById('modal-body').innerText = text;
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+        document.getElementById('btn-modal-close').addEventListener('click', () => {
+            document.getElementById('custom-modal').classList.add('hidden');
+        });
+
+        // --- AUTHENTICATION GUARDIAN (RULE 3) ---
+        let authedUser = null;
+        async function authenticate() {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                const userCred = await auth.signInWithCustomToken(__initial_auth_token);
+                authedUser = userCred.user;
+            } else {
+                const userCred = await auth.signInAnonymously();
+                authedUser = userCred.user;
+            }
+        }
+
+        // Screen transition
+        const screens = {
+            lobby: document.getElementById('screen-lobby'),
+            setup: document.getElementById('screen-setup'),
+            nightTransition: document.getElementById('screen-night-transition'),
+            nightAction: document.getElementById('screen-night-action'),
+            discussion: document.getElementById('screen-discussion'),
+            result: document.getElementById('screen-result')
+        };
+
+        function transitionToScreen(screenKey) {
+            Object.keys(screens).forEach(key => {
+                if (key === screenKey) {
+                    screens[key].classList.remove('hidden');
+                } else {
+                    screens[key].classList.add('hidden');
+                }
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // --- LOBBY INITS ---
+        if (myNickname) {
+            document.getElementById('input-nickname').value = myNickname;
+        }
+
+        // --- FIRESTORE REFERENCE (RULE 1) ---
+        function getRoomDocRef(roomId) {
+            // Strictly conforms to RULE 1 path: /artifacts/{appId}/public/data/{collectionName}/{documentId}
+            return db.doc(`artifacts/${appId}/public/data/rooms/${roomId}`);
+        }
+
+        // Create Room Trigger
+        document.getElementById('btn-create-room').addEventListener('click', async () => {
+            const nick = document.getElementById('input-nickname').value.trim();
+            if (!nick) {
+                showModal('名前の入力', 'まずはあなたのニックネームを入力してください。');
+                return;
+            }
+            myNickname = nick;
+            localStorage.setItem('werewolf_nickname', nick);
+
+            try {
+                await authenticate();
+                if (!authedUser) return;
+
+                const code = generateRoomCode();
+                myRoomId = code;
+                isHost = true;
+
+                const roomRef = getRoomDocRef(code);
+                
+                // Initialize clean room state
+                await roomRef.set({
+                    id: code,
+                    host: myNickname,
+                    hostUid: authedUser.uid,
+                    status: 'waiting', // waiting, night, discussion, result
+                    players: [{ name: myNickname, uid: authedUser.uid, online: true }],
+                    roleSelection: {
+                        wolf: 1,
+                        seer: 1,
+                        robber: 1,
+                        villager: 1,
+                        troublemaker: 1,
+                        mason: 0,
+                        insomniac: 0
+                    },
+                    gameState: {
+                        deck: [],
+                        activePlayers: [], // { name, uid, initialRole, currentRole }
+                        talon: [],
+                        actionIndex: 0, // Points to role orders (e.g. 1 to 5)
+                        actionLogs: [],
+                        votes: {}, // name -> targetName
+                        timerSeconds: 300,
+                        timerRunning: false
+                    },
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                startRoomSubscription(code);
+
+            } catch (error) {
+                console.error(error);
+                showModal('通信エラー', '部屋の作成に失敗しました。時間をおいてやり直してください。');
+            }
+        });
+
+        // Join Room Trigger
+        document.getElementById('btn-join-room').addEventListener('click', async () => {
+            const nick = document.getElementById('input-nickname').value.trim();
+            const code = document.getElementById('input-room-code').value.trim();
+            
+            if (!nick) {
+                showModal('名前の入力', 'ニックネームを入力してください。');
+                return;
+            }
+            if (!code || code.length !== 4) {
+                showModal('部屋コードの入力', '正しい4桁の部屋コードを入力してください。');
+                return;
+            }
+
+            myNickname = nick;
+            localStorage.setItem('werewolf_nickname', nick);
+            myRoomId = code;
+            isHost = false;
+
+            try {
+                await authenticate();
+                if (!authedUser) return;
+
+                const roomRef = getRoomDocRef(code);
+                const snapshot = await roomRef.get();
+
+                if (!snapshot.exists) {
+                    showModal('部屋が見つかりません', '指定された部屋コードは存在しないか、終了しています。');
+                    return;
+                }
+
+                const roomData = snapshot.data();
+                if (roomData.status !== 'waiting') {
+                    showModal('満員・進行中', 'このお部屋はすでにゲームが開始されています。');
+                    return;
+                }
+
+                // Append player if not already in
+                let playerList = roomData.players || [];
+                const exist = playerList.find(p => p.uid === authedUser.uid);
+                
+                if (!exist) {
+                    // Check duplicate nickname
+                    if (playerList.some(p => p.name === myNickname)) {
+                        myNickname = myNickname + '#';
+                    }
+                    playerList.push({ name: myNickname, uid: authedUser.uid, online: true });
+                    await roomRef.update({ players: playerList });
+                }
+
+                startRoomSubscription(code);
+
+            } catch (err) {
+                console.error(err);
+                showModal('通信エラー', '部屋への入室に失敗しました。');
+            }
+        });
+
+        // Leave & Back to Lobby
+        document.getElementById('btn-reset').addEventListener('click', async () => {
+            if (roomUnsubscribe) {
+                roomUnsubscribe();
+                roomUnsubscribe = null;
+            }
+            // If lobby, just stay. If in room, soft leave
+            if (myRoomId) {
+                try {
+                    const roomRef = getRoomDocRef(myRoomId);
+                    const snap = await roomRef.get();
+                    if (snap.exists) {
+                        const data = snap.data();
+                        let updatedPlayers = data.players.filter(p => p.uid !== (authedUser ? authedUser.uid : ''));
+                        if (updatedPlayers.length === 0) {
+                            // Empty room deletes
+                            await roomRef.delete();
+                        } else {
+                            // Update host if host left
+                            let nextHost = data.host;
+                            let nextHostUid = data.hostUid;
+                            if (data.hostUid === (authedUser ? authedUser.uid : '')) {
+                                nextHost = updatedPlayers[0].name;
+                                nextHostUid = updatedPlayers[0].uid;
+                            }
+                            await roomRef.update({
+                                players: updatedPlayers,
+                                host: nextHost,
+                                hostUid: nextHostUid
+                            });
+                        }
+                    }
+                } catch(e) {
+                    console.log(e);
+                }
+            }
+            myRoomId = '';
+            isHost = false;
+            document.getElementById('display-room-id').classList.add('hidden');
+            transitionToScreen('lobby');
+        });
+
+
+        // --- REALTIME SUBSCRIPTION FOR ROOM STATE ---
+        function startRoomSubscription(roomId) {
+            document.getElementById('current-room-code').innerText = roomId;
+            document.getElementById('display-room-id').classList.remove('hidden');
+            
+            const roomRef = getRoomDocRef(roomId);
+
+            roomUnsubscribe = roomRef.onSnapshot(docSnap => {
+                if (!docSnap.exists) {
+                    showModal('解散されました', 'お部屋がホストにより解散、または削除されました。');
+                    if (roomUnsubscribe) roomUnsubscribe();
+                    transitionToScreen('lobby');
+                    return;
+                }
+
+                const data = docSnap.data();
+                
+                // Determine hosting role dynamically based on auth
+                isHost = (data.hostUid === (authedUser ? authedUser.uid : ''));
+
+                // Handle screens depending on status
+                syncScreenState(data);
+
+            }, err => {
+                console.error("Firestore Listen error: ", err);
+            });
+        }
+
+        // --- SCREEN STATE SYNCHRONIZATION ---
+        let localRoleSelection = {};
+        
+        function syncScreenState(roomData) {
+            localRoleSelection = roomData.roleSelection || {};
+
+            switch (roomData.status) {
+                case 'waiting':
+                    setupWaitingRoom(roomData);
+                    break;
+                case 'night':
+                    processNightPhase(roomData);
+                    break;
+                case 'discussion':
+                    processDiscussionPhase(roomData);
+                    break;
+                case 'result':
+                    processResultPhase(roomData);
+                    break;
+            }
+        }
+
+        // --- WAITING ROOM SETUP ---
+        function setupWaitingRoom(roomData) {
+            transitionToScreen('setup');
+            document.getElementById('setup-room-code').innerText = roomData.id;
+
+            // Render players
+            const container = document.getElementById('players-waiting-list');
+            container.innerHTML = '';
+            
+            const pCount = roomData.players.length;
+            document.getElementById('waiting-players-count').innerText = pCount;
+
+            roomData.players.forEach(p => {
+                const isThisMe = p.uid === (authedUser ? authedUser.uid : '');
+                const isHostPlayer = p.uid === roomData.hostUid;
+                
+                const div = document.createElement('div');
+                div.className = `p-3 rounded-lg border text-sm flex items-center justify-between font-bold ${
+                    isThisMe ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-300' : 'bg-slate-950 border-slate-800'
+                }`;
+                div.innerHTML = `
+                    <span class="truncate">${p.name} ${isThisMe ? ' (あなた)' : ''}</span>
+                    ${isHostPlayer ? '<span class="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-600/50 px-1.5 py-0.5 rounded">親</span>' : ''}
+                `;
+                container.appendChild(div);
+            });
+
+            // Adjust interactive options for host or guests
+            if (isHost) {
+                document.getElementById('host-controls-area').classList.remove('hidden');
+                document.getElementById('guest-waiting-area').classList.add('hidden');
+                renderRolesConfigPanel(pCount);
+            } else {
+                document.getElementById('host-controls-area').classList.add('hidden');
+                document.getElementById('guest-waiting-area').classList.remove('hidden');
+            }
+        }
+
+        function renderRolesConfigPanel(pCount) {
+            const requiredCount = pCount + 2;
+            let currentSelected = 0;
+            
+            Object.values(localRoleSelection).forEach(v => currentSelected += v);
+
+            document.getElementById('required-role-count').innerText = requiredCount;
+            document.getElementById('selected-role-count').innerText = currentSelected;
+
+            const grid = document.getElementById('roles-grid');
+            grid.innerHTML = '';
+
+            Object.keys(ALL_ROLES).forEach(roleId => {
+                const r = ALL_ROLES[roleId];
+                const count = localRoleSelection[roleId] || 0;
+
+                const div = document.createElement('div');
+                div.className = `flex flex-col justify-between p-2.5 rounded-lg border transition ${count > 0 ? 'bg-slate-800/80 border-amber-500/50' : 'bg-slate-950/40 border-slate-850'}`;
+                div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-slate-300"><i class="fa-solid ${r.icon} mr-1"></i>${r.name}</span>
+                        <div class="flex items-center space-x-1.5 bg-slate-950 rounded p-0.5 border border-slate-800">
+                            <button class="btn-r-dec bg-slate-800 hover:bg-slate-700 w-4 h-4 flex items-center justify-center rounded text-[10px] text-white" data-role="${roleId}">-</button>
+                            <span class="text-xs font-bold px-1 text-white">${count}</span>
+                            <button class="btn-r-inc bg-slate-800 hover:bg-slate-700 w-4 h-4 flex items-center justify-center rounded text-[10px] text-white" data-role="${roleId}">+</button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(div);
+            });
+
+            // Bind Setup events
+            document.querySelectorAll('.btn-r-inc').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const role = btn.dataset.role;
+                    if (localRoleSelection[role] < 4) {
+                        localRoleSelection[role]++;
+                        await updateRoomRoles();
+                    }
+                });
+            });
+
+            document.querySelectorAll('.btn-r-dec').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const role = btn.dataset.role;
+                    if (localRoleSelection[role] > 0) {
+                        localRoleSelection[role]--;
+                        await updateRoomRoles();
+                    }
+                });
+            });
+
+            // Start Game Trigger Validation
+            const btnStart = document.getElementById('btn-start-game');
+            const errorElement = document.getElementById('setup-error');
+
+            if (currentSelected === requiredCount) {
+                btnStart.disabled = false;
+                errorElement.classList.add('hidden');
+            } else {
+                btnStart.disabled = true;
+                errorElement.innerText = `現在: ${currentSelected}枚 (お墓含め ${requiredCount}枚必要です)`;
+                errorElement.classList.remove('hidden');
+            }
+        }
+
+        async function updateRoomRoles() {
+            try {
+                const roomRef = getRoomDocRef(myRoomId);
+                await roomRef.update({ roleSelection: localRoleSelection });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // START GAME: Triggered by Host
+        document.getElementById('btn-start-game').addEventListener('click', async () => {
+            const roomRef = getRoomDocRef(myRoomId);
+            const snap = await roomRef.get();
+            if (!snap.exists) return;
+
+            const rData = snap.data();
+            const playersList = rData.players;
+            
+            // Generate and shuffle deck
+            let deck = [];
+            Object.keys(localRoleSelection).forEach(roleId => {
+                const count = localRoleSelection[roleId];
+                for (let i = 0; i < count; i++) {
+                    deck.push(roleId);
+                }
+            });
+
+            // Shuffle
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+
+            // Map players to game cards
+            const activePlayers = playersList.map((p, idx) => {
+                return {
+                    name: p.name,
+                    uid: p.uid,
+                    initialRole: deck[idx],
+                    currentRole: deck[idx],
+                    actionDone: false
+                };
+            });
+
+            const talon = [
+                { id: 'talon1', role: deck[playersList.length] },
+                { id: 'talon2', role: deck[playersList.length + 1] }
+            ];
+
+            // Action phases pipeline
+            // Standard order: wolf (1), seer (2), robber (3), troublemaker (4), insomniac (5)
+            // Save starting conditions
+            await roomRef.update({
+                status: 'night',
+                gameState: {
+                    deck: deck,
+                    activePlayers: activePlayers,
+                    talon: talon,
+                    actionIndex: 1, // Start with order index 1 (Werewolf)
+                    actionLogs: ["人狼オンライン：ゲームが開始されました。夜フェーズです。"],
+                    votes: {},
+                    timerSeconds: 300,
+                    timerRunning: false
+                }
+            });
+        });
+
+
+        // --- NIGHT ACTION PHASE HANDLING ---
+        function processNightPhase(roomData) {
+            const gState = roomData.gameState;
+            const me = gState.activePlayers.find(p => p.uid === (authedUser ? authedUser.uid : ''));
+            
+            if (!me) {
+                // Observer or not in game
+                transitionToScreen('nightTransition');
+                document.getElementById('night-status-text').innerText = "ゲームが進行中です。";
+                return;
+            }
+
+            const myInitialRole = ALL_ROLES[me.initialRole];
+            const currentTurnOrder = gState.actionIndex;
+
+            // Determine if it is my turn to act
+            // Actionless or waiting for turn order
+            if (myInitialRole.order === currentTurnOrder && !me.actionDone) {
+                // IT IS MY TURN TO ACT!
+                renderNightActionScreen(me, roomData);
+            } else {
+                // Wait screen
+                transitionToScreen('nightTransition');
+                const actingRoles = Object.values(ALL_ROLES).filter(r => r.order === currentTurnOrder);
+                const actingNames = actingRoles.map(r => r.name).join(' / ');
+                
+                document.getElementById('night-status-text').innerHTML = `
+                    現在は深夜です。<br>
+                    <b class="text-amber-400 font-bold">${actingNames || '一部の役職'}</b>が行動しています。<br>
+                    静かにお待ちください。
+                `;
+
+                // If I have no action (e.g., Villager) or already done, auto-advance on complete
+                // Host handles the pipeline logic transition when current action turn completes
+                if (isHost) {
+                    checkAndAdvanceNightPipeline(roomData);
+                }
+            }
+        }
+
+        // Host pipeline manager for Night Phase turns
+        async function checkAndAdvanceNightPipeline(roomData) {
+            const gState = roomData.gameState;
+            const currentTurnOrder = gState.actionIndex;
+
+            // Find all players who are of this turn order
+            const playersOfThisOrder = gState.activePlayers.filter(p => ALL_ROLES[p.initialRole].order === currentTurnOrder);
+            
+            // Check if all players of this order have completed their action
+            const allDone = playersOfThisOrder.every(p => p.actionDone);
+
+            if (allDone || playersOfThisOrder.length === 0) {
+                // Advance turn order
+                const nextOrder = currentTurnOrder + 1;
+                const maxOrder = 5; // Insomniac is highest active
+
+                const roomRef = getRoomDocRef(roomData.id);
+
+                if (nextOrder > maxOrder) {
+                    // All night actions completed. Proceed to Daytime!
+                    await roomRef.update({
+                        status: 'discussion',
+                        'gameState.timerSeconds': 300,
+                        'gameState.timerRunning': false
+                    });
+                } else {
+                    // Move to next active phase order
+                    await roomRef.update({
+                        'gameState.actionIndex': nextOrder
+                    });
+                }
+            }
+        }
+
+        function renderNightActionScreen(myPlayerState, roomData) {
+            const gState = roomData.gameState;
+            const myInitialRole = ALL_ROLES[myPlayerState.initialRole];
+
+            document.getElementById('action-player-title').innerText = myPlayerState.name;
+            document.getElementById('card-role-name').innerText = myInitialRole.name;
+            document.getElementById('card-role-team').innerText = myInitialRole.teamName;
+            document.getElementById('card-role-desc').innerText = myInitialRole.desc;
+
+            // Apply card styling
+            const cardDisplay = document.getElementById('card-display');
+            cardDisplay.className = `w-44 h-60 rounded-2xl border-2 flex flex-col items-center justify-center p-4 text-center shadow-xl relative overflow-hidden ${myInitialRole.colorClass}`;
+            document.getElementById('card-icon').innerHTML = `<i class="fa-solid ${myInitialRole.icon}"></i>`;
+
+            const teamLabel = document.getElementById('card-role-team');
+            if (myInitialRole.team === 'werewolf') {
+                teamLabel.className = 'text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-full bg-red-900 text-red-200 border border-red-600';
+            } else {
+                teamLabel.className = 'text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600';
+            }
+
+            // Interactive Dynamic Controllers
+            setupActionInteractions(myPlayerState, roomData);
+
+            transitionToScreen('nightAction');
+        }
+
+        function setupActionInteractions(me, roomData) {
+            const controls = document.getElementById('action-controls');
+            const resultText = document.getElementById('action-result-text');
+            const promptTitle = document.getElementById('action-prompt-title');
+            
+            controls.innerHTML = '';
+            resultText.innerText = '';
+            resultText.classList.add('hidden');
+
+            const otherPlayers = roomData.gameState.activePlayers.filter(p => p.name !== me.name);
+            const roleId = me.initialRole;
+
+            // Disable complete button until action committed
+            const btnComplete = document.getElementById('btn-complete-action');
+            btnComplete.disabled = true;
+            btnComplete.classList.add('opacity-40');
+
+            switch (roleId) {
+                case 'wolf':
+                    promptTitle.innerText = '仲間の確認';
+                    const otherWolves = otherPlayers.filter(p => p.initialRole === 'wolf');
+                    if (otherWolves.length > 0) {
+                        const wolfNames = otherWolves.map(w => w.name).join('、');
+                        resultText.innerText = `仲間の人狼は: 【 ${wolfNames} 】 さんです。`;
+                        resultText.classList.remove('hidden');
+                        btnComplete.disabled = false;
+                        btnComplete.classList.remove('opacity-40');
+                    } else {
+                        resultText.innerText = `仲間はいません（単独人狼です）。お墓（場に残る2枚）の1枚をこっそり覗いてください。`;
+                        resultText.classList.remove('hidden');
+
+                        const div = document.createElement('div');
+                        div.className = 'grid grid-cols-2 gap-2 mt-1';
+                        div.innerHTML = `
+                            <button id="btn-peek-t1" class="bg-indigo-900/40 hover:bg-indigo-800 border border-indigo-700 p-2.5 rounded-lg text-xs font-bold transition">
+                                お墓 A を覗く
+                            </button>
+                            <button id="btn-peek-t2" class="bg-indigo-900/40 hover:bg-indigo-800 border border-indigo-700 p-2.5 rounded-lg text-xs font-bold transition">
+                                お墓 B を覗く
+                            </button>
+                        `;
+                        controls.appendChild(div);
+
+                        document.getElementById('btn-peek-t1').addEventListener('click', async () => {
+                            const ref = ALL_ROLES[roomData.gameState.talon[0].role];
+                            resultText.innerText = `お墓 A の役職は 【 ${ref.name} 】 でした。`;
+                            disableButtons(['btn-peek-t1', 'btn-peek-t2']);
+                            
+                            // Log action quietly in history
+                            await commitActionDone(me, `${me.name} が単独人狼の能力でお墓Aを確認しました。`);
+                        });
+
+                        document.getElementById('btn-peek-t2').addEventListener('click', async () => {
+                            const ref = ALL_ROLES[roomData.gameState.talon[1].role];
+                            resultText.innerText = `お墓 B の役職は 【 ${ref.name} 】 でした。`;
+                            disableButtons(['btn-peek-t1', 'btn-peek-t2']);
+                            
+                            await commitActionDone(me, `${me.name} が単独人狼の能力でお墓Bを確認しました。`);
+                        });
+                    }
+                    break;
+
+                case 'seer':
+                    promptTitle.innerText = '占う対象を1つ選んでください';
+                    
+                    const optionDiv = document.createElement('div');
+                    optionDiv.className = 'space-y-3';
+                    
+                    let pSelect = `<p class="text-[10px] text-slate-400">プラン①：誰か1名を占う</p><div class="grid grid-cols-2 gap-2">`;
+                    otherPlayers.forEach(p => {
+                        pSelect += `
+                            <button class="btn-seer-p bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition" data-target="${p.name}">
+                                ${p.name}
+                            </button>
+                        `;
+                    });
+                    pSelect += `</div>`;
+
+                    let tSelect = `
+                        <p class="text-[10px] text-slate-400 pt-1">プラン②：お墓のカードを2枚とも見る</p>
+                        <button id="btn-seer-t" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition">
+                            お墓（残りの2枚）を両方占う
+                        </button>
+                    `;
+
+                    optionDiv.innerHTML = pSelect + tSelect;
+                    controls.appendChild(optionDiv);
+
+                    document.querySelectorAll('.btn-seer-p').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const target = e.target.dataset.target;
+                            const targetPlayer = roomData.gameState.activePlayers.find(p => p.name === target);
+                            const role = ALL_ROLES[targetPlayer.initialRole];
+
+                            resultText.innerText = `${target} さんの最初の役職は 【 ${role.name} 】 でした。`;
+                            resultText.classList.remove('hidden');
+                            
+                            disableButtons(['btn-seer-t', ...document.querySelectorAll('.btn-seer-p')]);
+                            await commitActionDone(me, `${me.name} が占い師の能力で ${target} を占い、${role.name} であることを確認しました。`);
+                        });
+                    });
+
+                    document.getElementById('btn-seer-t').addEventListener('click', async () => {
+                        const rA = ALL_ROLES[roomData.gameState.talon[0].role].name;
+                        const rB = ALL_ROLES[roomData.gameState.talon[1].role].name;
+
+                        resultText.innerText = `お墓のカードは 【 A: ${rA} 】 ＆ 【 B: ${rB} 】 でした。`;
+                        resultText.classList.remove('hidden');
+
+                        disableButtons(['btn-seer-t', ...document.querySelectorAll('.btn-seer-p')]);
+                        await commitActionDone(me, `${me.name} が占い師の能力でお墓の2枚（${rA}, ${rB}）を占いました。`);
+                    });
+                    break;
+
+                case 'robber':
+                    promptTitle.innerText = '誰のカードと入れ替えますか？';
+                    
+                    const robDiv = document.createElement('div');
+                    robDiv.className = 'grid grid-cols-2 gap-2';
+                    otherPlayers.forEach(p => {
+                        robDiv.innerHTML += `
+                            <button class="btn-rob bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition" data-target="${p.name}">
+                                ${p.name}
+                            </button>
+                        `;
+                    });
+                    robDiv.innerHTML += `
+                        <button id="btn-rob-skip" class="w-full bg-slate-900 text-slate-400 text-xs py-2 rounded border border-slate-850 transition col-span-full italic">
+                            入れ替えない
+                        </button>
+                    `;
+                    controls.appendChild(robDiv);
+
+                    document.querySelectorAll('.btn-rob').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const target = e.target.dataset.target;
+                            
+                            // Perform Swapping on DB
+                            const roomRef = getRoomDocRef(roomData.id);
+                            const currentPlayers = [...roomData.gameState.activePlayers];
+                            
+                            const myIdx = currentPlayers.findIndex(p => p.name === me.name);
+                            const tarIdx = currentPlayers.findIndex(p => p.name === target);
+
+                            const temp = currentPlayers[myIdx].currentRole;
+                            currentPlayers[myIdx].currentRole = currentPlayers[tarIdx].currentRole;
+                            currentPlayers[tarIdx].currentRole = temp;
+
+                            const gotRole = ALL_ROLES[currentPlayers[myIdx].currentRole];
+                            resultText.innerText = `${target} さんの役職カードと交換しました。あなたの新しい役職は 【 ${gotRole.name} 】 です！`;
+                            resultText.classList.remove('hidden');
+
+                            disableButtons(['btn-rob-skip', ...document.querySelectorAll('.btn-rob')]);
+                            
+                            // Save state and set active action finished flag
+                            me.actionDone = true;
+                            await roomRef.update({
+                                'gameState.activePlayers': currentPlayers,
+                                'gameState.actionLogs': firebase.firestore.FieldValue.arrayUnion(`${me.name} が怪盗の能力で ${target} のカードを奪い、${gotRole.name} になりました。`)
+                            });
+                            btnComplete.disabled = false;
+                            btnComplete.classList.remove('opacity-40');
+                        });
+                    });
+
+                    document.getElementById('btn-rob-skip').addEventListener('click', async () => {
+                        resultText.innerText = `交換を行いませんでした。`;
+                        resultText.classList.remove('hidden');
+                        disableButtons(['btn-rob-skip', ...document.querySelectorAll('.btn-rob')]);
+                        await commitActionDone(me, `${me.name} は怪盗の能力を使用しませんでした。`);
+                    });
+                    break;
+
+                case 'troublemaker':
+                    promptTitle.innerText = '入れ替えたいプレイヤー2人を選択してください';
+                    resultText.innerText = 'あなた以外の2人を選んで入れ替えます。あなたは誰が何のカードになったかを知ることはできません。';
+                    resultText.classList.remove('hidden');
+
+                    let selected = [];
+                    const trbDiv = document.createElement('div');
+                    trbDiv.className = 'grid grid-cols-2 gap-2';
+                    
+                    otherPlayers.forEach(p => {
+                        trbDiv.innerHTML += `
+                            <button class="btn-trb bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition" data-target="${p.name}">
+                                ${p.name}
+                            </button>
+                        `;
+                    });
+                    trbDiv.innerHTML += `
+                        <button id="btn-trb-skip" class="w-full bg-slate-900 text-slate-400 text-xs py-2 rounded border border-slate-850 transition col-span-full italic">
+                            入れ替えない
+                        </button>
+                    `;
+                    controls.appendChild(trbDiv);
+
+                    document.querySelectorAll('.btn-trb').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const target = e.target.dataset.target;
+                            
+                            if (selected.includes(target)) {
+                                selected = selected.filter(x => x !== target);
+                                e.target.className = "bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2 rounded border border-slate-700 transition";
+                            } else {
+                                if (selected.length < 2) {
+                                    selected.push(target);
+                                    e.target.className = "bg-amber-900/40 text-amber-300 text-xs py-2 rounded border border-amber-600 transition font-bold";
+                                }
+                            }
+
+                            if (selected.length === 2) {
+                                disableButtons(['btn-trb-skip', ...document.querySelectorAll('.btn-trb')]);
+                                
+                                const roomRef = getRoomDocRef(roomData.id);
+                                const currentPlayers = [...roomData.gameState.activePlayers];
+                                
+                                const idx1 = currentPlayers.findIndex(p => p.name === selected[0]);
+                                const idx2 = currentPlayers.findIndex(p => p.name === selected[1]);
+
+                                const temp = currentPlayers[idx1].currentRole;
+                                currentPlayers[idx1].currentRole = currentPlayers[idx2].currentRole;
+                                currentPlayers[idx2].currentRole = temp;
+
+                                resultText.innerText = `【 ${selected[0]} 】 さんと 【 ${selected[1]} 】 さんの役職カードを密かに入れ替えました。`;
+                                
+                                me.actionDone = true;
+                                await roomRef.update({
+                                    'gameState.activePlayers': currentPlayers,
+                                    'gameState.actionLogs': firebase.firestore.FieldValue.arrayUnion(`${me.name} がトラブルメーカーの能力で、${selected[0]} と ${selected[1]} のカードを入れ替えました。`)
+                                });
+                                btnComplete.disabled = false;
+                                btnComplete.classList.remove('opacity-40');
+                            }
+                        });
+                    });
+
+                    document.getElementById('btn-trb-skip').addEventListener('click', async () => {
+                        resultText.innerText = `入れ替えを行いませんでした。`;
+                        disableButtons(['btn-trb-skip', ...document.querySelectorAll('.btn-trb')]);
+                        await commitActionDone(me, `${me.name} はトラブルメーカーの能力を使用しませんでした。`);
+                    });
+                    break;
+
+                case 'mason':
+                    promptTitle.innerText = '仲間の石工';
+                    const otherMasons = otherPlayers.filter(p => p.initialRole === 'mason');
+                    if (otherMasons.length > 0) {
+                        const mNames = otherMasons.map(m => m.name).join('、');
+                        resultText.innerText = `もう一人の石工は 【 ${mNames} 】 さんです。`;
+                    } else {
+                        resultText.innerText = `他に石工はいません。お墓に入っているようです。`;
+                    }
+                    resultText.classList.remove('hidden');
+                    btnComplete.disabled = false;
+                    btnComplete.classList.remove('opacity-40');
+                    // Pre-commit done as no selections needed
+                    commitActionDone(me, `${me.name} が共同墓地の存在を確認しました。`);
+                    break;
+
+                case 'insomniac':
+                    promptTitle.innerText = '朝直前のあなたの状態';
+                    const curRole = ALL_ROLES[me.currentRole];
+                    resultText.innerText = `朝が来る直前のあなたの現在の役職は 【 ${curRole.name} 】 です。`;
+                    resultText.classList.remove('hidden');
+                    btnComplete.disabled = false;
+                    btnComplete.classList.remove('opacity-40');
+                    commitActionDone(me, `${me.name} が不眠症の能力で自分の現在の役職が ${curRole.name} であることを確認しました。`);
+                    break;
+
+                case 'villager':
+                default:
+                    promptTitle.innerText = '夜の行動はありません';
+                    resultText.innerText = 'あなたは市民です。静かに目を閉じて眠っています。昼の議論で嘘を見破りましょう。';
+                    resultText.classList.remove('hidden');
+                    btnComplete.disabled = false;
+                    btnComplete.classList.remove('opacity-40');
+                    commitActionDone(me, `${me.name} （市民）は静かに夜を過ごしました。`);
+                    break;
+            }
+        }
+
+        function disableButtons(ids) {
+            ids.forEach(id => {
+                const el = typeof id === 'string' ? document.getElementById(id) : id;
+                if (el) {
+                    el.disabled = true;
+                    el.classList.add('opacity-40');
+                }
+            });
+        }
+
+        async function commitActionDone(meState, logMsg) {
+            const roomRef = getRoomDocRef(myRoomId);
+            const snap = await roomRef.get();
+            if (!snap.exists) return;
+
+            const rData = snap.data();
+            const currentPlayers = rData.gameState.activePlayers.map(p => {
+                if (p.name === meState.name) {
+                    p.actionDone = true;
+                }
+                return p;
+            });
+
+            await roomRef.update({
+                'gameState.activePlayers': currentPlayers,
+                'gameState.actionLogs': firebase.firestore.FieldValue.arrayUnion(logMsg)
+            });
+
+            const btnComplete = document.getElementById('btn-complete-action');
+            btnComplete.disabled = false;
+            btnComplete.classList.remove('opacity-40');
+        }
+
+        // Action confirmation completed
+        document.getElementById('btn-complete-action').addEventListener('click', async () => {
+            // Instantly transition back to transition screen
+            transitionToScreen('nightTransition');
+            document.getElementById('night-status-text').innerText = "行動完了を記録しました。お待ちください...";
+        });
+
+
+        // --- DAYTIME DISCUSSION & REALTIME VOTING ---
+        let localTimerId = null;
+
+        function processDiscussionPhase(roomData) {
+            transitionToScreen('discussion');
+
+            const gState = roomData.gameState;
+            
+            // Sync Timer seconds
+            syncTimer(gState);
+
+            // Host view vs Guest view of timer
+            if (isHost) {
+                document.getElementById('timer-host-controls').classList.remove('hidden');
+            } else {
+                document.getElementById('timer-host-controls').classList.add('hidden');
+            }
+
+            // Sync dynamic target voters
+            renderVoterTargetDropdown(roomData);
+
+            // Real-time vote counts and badges
+            const totalPlayers = gState.activePlayers.length;
+            const votesSubmittedMap = gState.votes || {};
+            const castCount = Object.keys(votesSubmittedMap).length;
+
+            document.getElementById('vote-count-status').innerText = `投票済み: ${castCount} / ${totalPlayers}人`;
+
+            // Display badges of who has successfully cast their votes
+            const badgesContainer = document.getElementById('vote-status-badges');
+            badgesContainer.innerHTML = '';
+            
+            gState.activePlayers.forEach(p => {
+                const hasVoted = !!votesSubmittedMap[p.name];
+                const badge = document.createElement('span');
+                badge.className = `text-[10px] px-2 py-0.5 rounded font-bold ${
+                    hasVoted ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-900 text-slate-500 border border-slate-800'
+                }`;
+                badge.innerText = `${p.name} ${hasVoted ? '✓' : '...'}`;
+                badgesContainer.appendChild(badge);
+            });
+
+            // If all voted, Host can see and trigger Result.
+            if (isHost && castCount === totalPlayers) {
+                document.getElementById('btn-reveal-results-manual').classList.remove('hidden');
+            } else {
+                document.getElementById('btn-reveal-results-manual').classList.add('hidden');
+            }
+        }
+
+        function syncTimer(gState) {
+            const min = Math.floor(gState.timerSeconds / 60);
+            const sec = gState.timerSeconds % 60;
+            document.getElementById('discussion-timer').innerText = 
+                `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+
+            // Clean previous local ticker
+            if (localTimerId) clearInterval(localTimerId);
+
+            if (gState.timerRunning && gState.timerSeconds > 0) {
+                localTimerId = setInterval(async () => {
+                    if (isHost) {
+                        const roomRef = getRoomDocRef(myRoomId);
+                        const nextSec = gState.timerSeconds - 1;
+                        if (nextSec <= 0) {
+                            clearInterval(localTimerId);
+                            await roomRef.update({
+                                'gameState.timerSeconds': 0,
+                                'gameState.timerRunning': false
+                            });
+                        } else {
+                            await roomRef.update({
+                                'gameState.timerSeconds': nextSec
+                            });
+                        }
+                    }
+                }, 1000);
+            }
+        }
+
+        // Timer Start/Stop toggled by Host
+        document.getElementById('btn-timer-toggle').addEventListener('click', async () => {
+            if (!isHost) return;
+
+            const roomRef = getRoomDocRef(myRoomId);
+            const snap = await roomRef.get();
+            if (!snap.exists) return;
+
+            const running = snap.data().gameState.timerRunning;
+            await roomRef.update({
+                'gameState.timerRunning': !running
+            });
+        });
+
+        // Generate target options in Selector
+        let previousVoterListHash = '';
+        function renderVoterTargetDropdown(roomData) {
+            const gState = roomData.gameState;
+            const me = gState.activePlayers.find(p => p.uid === (authedUser ? authedUser.uid : ''));
+            if (!me) return;
+
+            const targets = gState.activePlayers.filter(p => p.name !== me.name);
+            const hash = targets.map(t => t.name).join(',');
+            
+            if (previousVoterListHash === hash) return; // Prevent infinite re-draw cursor resets
+            previousVoterListHash = hash;
+
+            const selector = document.getElementById('my-vote-selector');
+            selector.innerHTML = `<option value="">-- あなたの投票先を選んでください --</option>`;
+            
+            targets.forEach(t => {
+                selector.innerHTML += `<option value="${t.name}">${t.name}</option>`;
+            });
+            // Peace option
+            selector.innerHTML += `<option value="peace">平和村（誰も吊らない / 人狼はいない）</option>`;
+        }
+
+        // Cast Vote Event
+        document.getElementById('btn-cast-vote').addEventListener('click', async (e) => {
+            const sel = document.getElementById('my-vote-selector');
+            const target = sel.value;
+            if (!target) {
+                showModal('投票エラー', '投票先を選択してください。');
+                return;
+            }
+
+            try {
+                const roomRef = getRoomDocRef(myRoomId);
+                const updatePath = `gameState.votes.${myNickname}`;
+                await roomRef.update({
+                    [updatePath]: target
+                });
+                
+                // Disable voting controls once sent to prevent double toggles
+                e.target.disabled = true;
+                e.target.innerText = "投票送信完了！";
+                e.target.className = "w-full py-2.5 bg-emerald-700 text-emerald-300 text-xs font-bold rounded-lg transition opacity-60";
+                sel.disabled = true;
+
+            } catch (err) {
+                console.error(err);
+                showModal('通信エラー', '投票の送信に失敗しました。');
+            }
+        });
+
+        // Trigger evaluation manually by Host (or auto if preferred)
+        document.getElementById('btn-reveal-results-manual').addEventListener('click', async () => {
+            if (!isHost) return;
+            evaluateResultsLocallyAndPush();
+        });
+
+        // --- CALC RESULTS AND UPDATE DB STATUS ---
+        async function evaluateResultsLocallyAndPush() {
+            const roomRef = getRoomDocRef(myRoomId);
+            const snap = await roomRef.get();
+            if (!snap.exists) return;
+
+            const roomData = snap.data();
+            const gState = roomData.gameState;
+            
+            const tally = {};
+            gState.activePlayers.forEach(p => tally[p.name] = 0);
+            tally['peace'] = 0;
+
+            Object.values(gState.votes).forEach(vote => {
+                tally[vote] = (tally[vote] || 0) + 1;
+            });
+
+            let maxVotes = 0;
+            let executed = [];
+
+            Object.keys(tally).forEach(name => {
+                if (tally[name] > maxVotes) {
+                    maxVotes = tally[name];
+                    executed = [name];
+                } else if (tally[name] === maxVotes && maxVotes > 0) {
+                    executed.push(name);
+                }
+            });
+
+            // Tie-break at 1-vote-each (nobody executed)
+            const isTieOfOne = maxVotes === 1;
+            if (isTieOfOne) {
+                executed = [];
+            }
+
+            const activeWerewolves = gState.activePlayers.filter(p => p.currentRole === 'wolf');
+            const werewolvesExist = activeWerewolves.length > 0;
+
+            let winnerTeam = 'villager';
+
+            if (executed.includes('peace') || executed.length === 0) {
+                if (werewolvesExist) {
+                    winnerTeam = 'werewolf';
+                } else {
+                    winnerTeam = 'villager';
+                }
+            } else {
+                const executedAWerewolf = executed.some(name => {
+                    const p = gState.activePlayers.find(x => x.name === name);
+                    return p && p.currentRole === 'wolf';
+                });
+
+                if (executedAWerewolf) {
+                    winnerTeam = 'villager';
+                } else {
+                    if (werewolvesExist) {
+                        winnerTeam = 'werewolf';
+                    } else {
+                        winnerTeam = 'werewolf_no_wolves'; // Citizens executed innocent with no wolves present
+                    }
+                }
+            }
+
+            // Save results to DB
+            await roomRef.update({
+                status: 'result',
+                'gameState.winnerTeam': winnerTeam,
+                'gameState.executed': executed
+            });
+        }
+
+
+        // --- RESULT VIEW PRESENTATION ---
+        function processResultPhase(roomData) {
+            transitionToScreen('result');
+
+            const gState = roomData.gameState;
+            
+            // Set winner banner
+            const winBanner = document.getElementById('result-winner-team');
+            if (gState.winnerTeam === 'villager') {
+                winBanner.innerText = '市民チームの勝利！';
+                winBanner.className = 'text-3xl font-bold text-emerald-400 wolf-title tracking-wider';
+            } else if (gState.winnerTeam === 'werewolf') {
+                winBanner.innerText = '人狼チームの勝利！';
+                winBanner.className = 'text-3xl font-bold text-red-500 wolf-title tracking-wider';
+            } else {
+                winBanner.innerText = '人狼不在（村人の処刑ミス）！';
+                winBanner.className = 'text-3xl font-bold text-amber-500 wolf-title tracking-wider';
+            }
+
+            // Executed Result
+            const execDisplay = document.getElementById('result-executed-players');
+            const executed = gState.executed || [];
+            if (executed.length === 0) {
+                execDisplay.innerHTML = `<span class="text-emerald-400">平和村（誰も処刑されませんでした）</span>`;
+            } else {
+                execDisplay.innerHTML = executed.map(name => {
+                    if (name === 'peace') return '平和の意思';
+                    const p = gState.activePlayers.find(x => x.name === name);
+                    const curRoleName = p ? ALL_ROLES[p.currentRole].name : '';
+                    return `<span class="text-white font-bold">${name}</span> (${curRoleName})`;
+                }).join(' ＆ ');
+            }
+
+            // Breakdown roles list
+            const breakContainer = document.getElementById('result-roles-reveal');
+            breakContainer.innerHTML = '';
+
+            gState.activePlayers.forEach(p => {
+                const init = ALL_ROLES[p.initialRole];
+                const curr = ALL_ROLES[p.currentRole];
+                const votesGot = Object.values(gState.votes || {}).filter(v => v === p.name).length;
+
+                const div = document.createElement('div');
+                div.className = 'bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2';
+                
+                let changeIndicator = '';
+                if (p.initialRole !== p.currentRole) {
+                    changeIndicator = `<span class="text-amber-400 font-bold ml-1">【役職の変動あり】</span>`;
+                }
+
+                div.innerHTML = `
+                    <div>
+                        <div class="text-sm font-bold text-white flex items-center space-x-2">
+                            <span>${p.name}</span>
+                            <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">${votesGot} 票獲得</span>
+                        </div>
+                        <div class="text-slate-400 mt-1">
+                            当初: <span class="text-slate-300 font-medium">${init.name}</span> ➔ 
+                            最後: <span class="text-white font-bold">${curr.name}</span> ${changeIndicator}
+                        </div>
+                    </div>
+                    <div class="text-[10px] px-2 py-1 bg-slate-900 rounded border border-slate-800 text-right text-slate-300 font-mono">
+                        投票先: ${gState.votes[p.name] === 'peace' ? '平和村' : (gState.votes[p.name] || 'なし')}
+                    </div>
+                `;
+                breakContainer.appendChild(div);
+            });
+
+            // Talons left
+            const talonContainer = document.getElementById('result-talon-cards');
+            talonContainer.innerHTML = '';
+            gState.talon.forEach((t, idx) => {
+                const r = ALL_ROLES[t.role];
+                const div = document.createElement('div');
+                div.className = 'bg-slate-900 p-2.5 rounded border border-slate-800 text-xs text-center';
+                div.innerHTML = `
+                    <span class="text-slate-500 block text-[10px] mb-0.5">お墓 ${idx === 0 ? 'A' : 'B'}</span>
+                    <strong class="text-slate-200 text-sm">${r.name}</strong>
+                `;
+                talonContainer.appendChild(div);
+            });
+
+            // Action history
+            const logContainer = document.getElementById('result-action-log');
+            logContainer.innerHTML = '';
+            (gState.actionLogs || []).forEach(log => {
+                const p = document.createElement('p');
+                p.className = 'border-l-2 border-indigo-500/50 pl-2 py-0.5';
+                p.innerText = log;
+                logContainer.appendChild(p);
+            });
+
+            // Restart buttons
+            if (isHost) {
+                document.getElementById('host-restart-area').classList.remove('hidden');
+                document.getElementById('guest-restart-area').classList.add('hidden');
+            } else {
+                document.getElementById('host-restart-area').classList.add('hidden');
+                document.getElementById('guest-restart-area').classList.remove('hidden');
+            }
+
+            // Restore elements for next session if re-voted
+            const castBtn = document.getElementById('btn-cast-vote');
+            castBtn.disabled = false;
+            castBtn.innerText = "投票を送信する";
+            castBtn.className = "w-full py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition";
+            document.getElementById('my-vote-selector').disabled = false;
+        }
+
+        // Restart Trigger: Only visible to Host
+        document.getElementById('btn-restart-game').addEventListener('click', async () => {
+            if (!isHost) return;
+
+            try {
+                const roomRef = getRoomDocRef(myRoomId);
+                const snap = await roomRef.get();
+                if (!snap.exists) return;
+
+                const rData = snap.data();
+                
+                // Keep players, but clean their connection states & votes back to default lobby state
+                const playersList = rData.players.map(p => {
+                    return { name: p.name, uid: p.uid, online: true };
+                });
+
+                await roomRef.update({
+                    status: 'waiting',
+                    players: playersList,
+                    gameState: {
+                        deck: [],
+                        activePlayers: [],
+                        talon: [],
+                        actionIndex: 0,
+                        actionLogs: [],
+                        votes: {},
+                        timerSeconds: 300,
+                        timerRunning: false
+                    }
+                });
+
+            } catch (err) {
+                console.error(err);
+                showModal('エラー', '次のゲームの開始に失敗しました。');
+            }
+        });
+
+    </script>
+</body>
+</html>
